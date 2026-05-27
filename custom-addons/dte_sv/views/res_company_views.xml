@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Agrega campos DTE al formulario de empresa (Ajustes → Empresas) -->
+    <record id="view_company_form_dte_sv" model="ir.ui.view">
+        <field name="name">res.company.form.dte.sv</field>
+        <field name="model">res.company</field>
+        <field name="inherit_id" ref="base.view_company_form"/>
+        <field name="arch" type="xml">
+            <notebook position="inside">
+                <page string="Facturación Electrónica DTE" name="dte_sv_config">
+                    <group string="Configuración MH El Salvador">
+                        <group>
+                            <field name="dte_establecimiento"
+                                   placeholder="Ej: S048"/>
+                            <field name="dte_punto_venta"
+                                   placeholder="Ej: P001"/>
+                        </group>
+                        <group>
+                            <div class="text-muted" colspan="2">
+                                El Número de Control se generará con el formato:<br/>
+                                <strong>DTE-{tipo}-{establecimiento}{punto_venta}-{correlativo}</strong><br/>
+                                Ejemplo: DTE-01-S048P001-000000000000001
+                            </div>
+                        </group>
+                    </group>
+                </page>
+            </notebook>
+        </field>
+    </record>
+</odoo>

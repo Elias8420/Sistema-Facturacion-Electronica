@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_move_form_dte_sv" model="ir.ui.view">
+        <field name="name">account.move.form.dte.sv</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="arch" type="xml">
+
+            <notebook position="inside">
+                <page string="Facturación Electrónica DTE" name="dte_sv">
+
+                    <!-- Fila 1: Tipo y Estado -->
+                    <group>
+                        <group string="Clasificación">
+                            <field name="tipo_dte"/>
+                            <field name="estado_dte" readonly="1"/>
+                        </group>
+                        <group string="Identificación">
+                            <field name="dte_codigo_generacion" readonly="1"/>
+                            <field name="dte_numero_control"    readonly="1"/>
+                        </group>
+                    </group>
+
+                    <!-- Fila 2: Sello de recepción -->
+                    <group string="Respuesta Ministerio de Hacienda">
+                        <field name="dte_sello_recepcion" readonly="1"/>
+                    </group>
+
+                    <!-- JSON completo del DTE -->
+                    <group string="JSON DTE">
+                        <field name="dte_json"
+                               readonly="1"
+                               nolabel="1"
+                               style="min-height:300px;font-family:monospace;font-size:12px;white-space:pre;"/>
+                    </group>
+
+                </page>
+            </notebook>
+
+        </field>
+    </record>
+</odoo>

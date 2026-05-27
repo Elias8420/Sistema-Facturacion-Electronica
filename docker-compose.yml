@@ -1,0 +1,51 @@
+services:
+
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - odoo_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  odoo:
+    image: odoo:17.0
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8069:8069"
+    environment:
+      HOST: db
+      PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ODOO_ADMIN_PASSWD: ${ODOO_ADMIN_PASSWD}
+    volumes:
+      - odoo_filestore:/var/lib/odoo
+      - ./config/odoo.conf.tpl:/etc/odoo/odoo.conf.tpl:ro
+      - ./config/init.sh:/init.sh:ro
+      - ./custom-addons:/mnt/extra-addons
+    entrypoint: ["/bin/bash", "/init.sh"]
+    networks:
+      - odoo_net
+
+volumes:
+  postgres_data:
+  odoo_filestore:
+
+networks:
+  odoo_net:
+    driver: bridge
