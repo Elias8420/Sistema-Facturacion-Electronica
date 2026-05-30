@@ -17,17 +17,8 @@ pipeline {
         }
 
         stage('CI - Lint & Test') {
-            agent {
-                docker {
-                    image 'python:3.11-slim'
-                    reuseNode true
-                }
-            }
             steps {
-                sh 'pip install flake8 pylint pytest jsonschema num2words requests -q'
-                sh 'flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 --ignore=E501,W503,E261'
-                sh 'pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903'
-                sh 'pytest tests/ -v --tb=short'
+                sh 'docker run --rm -v $(pwd):/app python:3.11-slim sh -c "pip install flake8 pylint pytest jsonschema num2words requests -q && flake8 /app/custom-addons/dte_sv/ /app/tests/ --max-line-length=120 --ignore=E501,W503,E261 && pylint /app/custom-addons/dte_sv/ /app/tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903 && pytest /app/tests/ -v --tb=short"'
             }
         }
 
