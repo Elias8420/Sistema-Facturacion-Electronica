@@ -72,36 +72,53 @@ EOF
             }
         }
 
-        stage('Build Docker Images') {
-            steps {
-                sh '''
-                    GIT_COMMIT=$(git rev-parse HEAD)
-                    docker build -t ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT} .
-                    docker build -t ${REGISTRY}/${IMAGE_NAME}:latest .
-                    echo "Built: ${REGISTRY}/${IMAGE_NAME}:\${GIT_COMMIT} and latest"
-                '''
+        stage('Build and Deploy') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/develop' || env.GIT_BRANCH == 'origin/main' }
             }
-        }
+            stages {
+                stage('Build Docker Images') {
+                    steps {
+                        sh '''
+                            GIT_COMMIT=$(git rev-parse HEAD)
+                            if [ "$GIT_BRANCH" == "origin/develop" ]; then
+                                TAG="latest-dev"
+                            else
+                                TAG="latest"
+                            fi
+                            docker build -t ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT} .
+                            docker build -t ${REGISTRY}/${IMAGE_NAME}:${TAG} .
+                            echo "Built: ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT} and ${TAG}"
+                        '''
+                    }
+                }
 
-        stage('Push to Registry') {
-            steps {
-                sh '''
-                    GIT_COMMIT=$(git rev-parse HEAD)
-                    echo "${REGISTRY_CREDS_PSW}" | docker login ${REGISTRY} -u "${REGISTRY_CREDS_USR}" --password-stdin
-                    docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT}
-                    docker push ${REGISTRY}/${IMAGE_NAME}:latest
-                    docker logout ${REGISTRY}
-                    echo "Images pushed successfully"
-                '''
-            }
-        }
+                stage('Push to Registry') {
+                    steps {
+                        sh '''
+                            GIT_COMMIT=$(git rev-parse HEAD)
+                            if [ "$GIT_BRANCH" == "origin/develop" ]; then
+                                TAG="latest-dev"
+                            else
+                                TAG="latest"
+                            fi
+                            echo "${REGISTRY_CREDS_PSW}" | docker login ${REGISTRY} -u "${REGISTRY_CREDS_USR}" --password-stdin
+                            docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT}
+                            docker push ${REGISTRY}/${IMAGE_NAME}:${TAG}
+                            docker logout ${REGISTRY}
+                            echo "Images pushed successfully"
+                        '''
+                    }
+                }
 
-        stage('Trigger Dokploy Deploy') {
-            steps {
-                sh '''
-                    curl -X POST "${DOKPLOY_WEBHOOK}"
-                    echo "Dokploy deploy triggered"
-                '''
+                stage('Trigger Dokploy Deploy') {
+                    steps {
+                        sh '''
+                            curl -X POST "${DOKPLOY_WEBHOOK}"
+                            echo "Dokploy deploy triggered"
+                        '''
+                    }
+                }
             }
         }
     }
