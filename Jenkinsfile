@@ -33,6 +33,9 @@ EOF
         stage('CI - Run Tests') {
             steps {
                 sh '''
+                    # Clean up any previous container with same name
+                    docker rm -f dte-sv-test || true
+
                     docker run -d --name dte-sv-test dte-sv-test-env
                     docker cp custom-addons dte-sv-test:/workspace/
                     docker cp tests dte-sv-test:/workspace/
@@ -52,13 +55,13 @@ EOF
                     cat /tmp/pylint.out || true
 
                     # Check exit codes
-                    FLAKE8_EXIT=\$(cat /tmp/flake8_exit.out | tr -d '[:space:]')
-                    PYLINE_EXIT=\$(cat /tmp/pylint_exit.out | tr -d '[:space:]')
+                    FLAKE8_EXIT=$(cat /tmp/flake8_exit.out | tr -d '[:space:]')
+                    PYLINE_EXIT=$(cat /tmp/pylint_exit.out | tr -d '[:space:]')
 
-                    echo "flake8 exit: \$FLAKE8_EXIT"
-                    echo "pylint exit: \$PYLINE_EXIT"
+                    echo "flake8 exit: $FLAKE8_EXIT"
+                    echo "pylint exit: $PYLINE_EXIT"
 
-                    if [ "\$FLAKE8_EXIT" != "0" ] || [ "\$PYLINE_EXIT" != "0" ]; then
+                    if [ "$FLAKE8_EXIT" != "0" ] || [ "$PYLINE_EXIT" != "0" ]; then
                         echo "Linting failed"
                         exit 1
                     fi
@@ -122,25 +125,25 @@ EOF
                     GIT_COMMIT=$(git rev-parse HEAD)
 
                     # Count errors from flake8 and pylint
-                    FLAKE8_COUNT=\$(wc -l < /tmp/flake8.out 2>/dev/null || echo "0")
-                    PYLINE_COUNT=\$(wc -l < /tmp/pylint.out 2>/dev/null || echo "0")
+                    FLAKE8_COUNT=$(wc -l < /tmp/flake8.out 2>/dev/null || echo "0")
+                    PYLINE_COUNT=$(wc -l < /tmp/pylint.out 2>/dev/null || echo "0")
 
                     # Build description
                     if [ -f /tmp/flake8.out ] && [ -s /tmp/flake8.out ]; then
-                        DESC="Linting failed: \${FLAKE8_COUNT} flake8 errors, \${PYLINE_COUNT} pylint issues"
+                        DESC="Linting failed: ${FLAKE8_COUNT} flake8 errors, ${PYLINE_COUNT} pylint issues"
                     else
                         DESC="CI checks failed"
                     fi
 
                     # Truncate to 140 chars
-                    DESC=\$(echo "\$DESC" | cut -c1-140)
+                    DESC=$(echo "$DESC" | cut -c1-140)
 
-                    echo "Sending to GitHub: \$DESC"
+                    echo "Sending to GitHub: $DESC"
 
                     curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
                         -H "Content-Type: application/json" \
-                        -d "{\"state\":\"failure\",\"context\":\"ci/jenkins\",\"description\":\"\$DESC\"}"
+                        -d "{\"state\":\"failure\",\"context\":\"ci/jenkins\",\"description\":\"${DESC}\"}"
                 '''
             }
         }
