@@ -5,6 +5,7 @@ pipeline {
         REGISTRY = 'registry.fopinet.com'
         IMAGE_NAME = 'dte_sv'
         REGISTRY_CREDS = credentials('registry-fopinet-creds')
+        GITHUB_TOKEN = credentials('github-api-token')
         DOKPLOY_WEBHOOK = 'https://dokploy.fopinet.com/api/deploy/compose/RJeR51sk8LAf8xMmYPkwl'
     }
 
@@ -74,11 +75,33 @@ pipeline {
     }
 
     post {
-        failure {
-            echo 'Pipeline failed. Check Jenkins logs.'
-        }
         success {
             echo 'Pipeline completed successfully!'
+            script {
+                if (env.GIT_BRANCH && (env.GIT_BRANCH.contains('origin/develop') || env.GIT_BRANCH.contains('origin/main'))) {
+                    sh '''
+                        GIT_COMMIT=$(git rev-parse --short HEAD)
+                        curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
+                            -H "Authorization: token ${GITHUB_TOKEN}" \
+                            -H "Content-Type: application/json" \
+                            -d '{"state":"success","context":"ci/jenkins","description":"All CI checks passed"}'
+                    '''
+                }
+            }
+        }
+        failure {
+            echo 'Pipeline failed. Check Jenkins logs.'
+            script {
+                if (env.GIT_BRANCH && (env.GIT_BRANCH.contains('origin/develop') || env.GIT_BRANCH.contains('origin/main'))) {
+                    sh '''
+                        GIT_COMMIT=$(git rev-parse --short HEAD)
+                        curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
+                            -H "Authorization: token ${GITHUB_TOKEN}" \
+                            -H "Content-Type: application/json" \
+                            -d '{"state":"failure","context":"ci/jenkins","description":"CI checks failed"}'
+                    '''
+                }
+            }
         }
     }
 }
