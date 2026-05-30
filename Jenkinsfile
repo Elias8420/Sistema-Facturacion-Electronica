@@ -1,11 +1,5 @@
 pipeline {
-    agent {
-        docker {
-            image 'python:3.11-slim'
-            args '-v /var/run/docker.sock:/var/run/docker.sock'
-            reuseNode true
-        }
-    }
+    agent any
 
     environment {
         REGISTRY = 'registry.fopinet.com'
@@ -22,26 +16,17 @@ pipeline {
             }
         }
 
-        stage('Setup - Install Dependencies') {
+        stage('CI - Lint & Test') {
+            agent {
+                docker {
+                    image 'python:3.11-slim'
+                    reuseNode true
+                }
+            }
             steps {
                 sh 'pip install flake8 pylint pytest jsonschema num2words requests -q'
-            }
-        }
-
-        stage('Lint - flake8') {
-            steps {
                 sh 'flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 --ignore=E501,W503,E261'
-            }
-        }
-
-        stage('Lint - pylint') {
-            steps {
                 sh 'pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903'
-            }
-        }
-
-        stage('Test - pytest') {
-            steps {
                 sh 'pytest tests/ -v --tb=short'
             }
         }
