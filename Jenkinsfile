@@ -126,10 +126,46 @@ stage('Build and Deploy') {
                             echo "Branch from GitHub payload (ref): ${branchFromPayload}"
                             echo "GIT_BRANCH (local): ${GIT_BRANCH}"
                             echo "DOKPLOY_WEBHOOK: ${DOKPLOY_WEBHOOK}"
-                            echo "Full Payload: ${fullPayload}"
 
-                            // Send full payload to Dokploy
-                            sh "curl -v -X POST '${DOKPLOY_WEBHOOK}' -H 'Content-Type: application/json' -d '${fullPayload}' 2>&1"
+                            // Parse GitHub payload to extract branch name, commit hash, and message
+                            def parsedPayload = null
+                            try {
+                                parsedPayload = readJSON(text: fullPayload)
+                            } catch (Exception e) {
+                                echo "Could not parse PAYLOAD as JSON: ${e.message}"
+                            }
+
+                            // Extract branch name (remove refs/heads/ prefix)
+                            def branchName = branchFromPayload
+                            if (branchName.startsWith("refs/heads/")) {
+                                branchName = branchName.substring(11)  // "refs/heads/".length() == 11
+                            }
+
+                            // Get commit hash and message from parsed payload
+                            def commitHash = parsedPayload?.after ?: sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                            def commitMessage = parsedPayload?.head_commit?.message ?: "Auto deploy"
+
+                            // Build Bitbucket-style payload for Dokploy
+                            def dokployPayload = [
+                                push: [
+                                    changes: [
+                                        [
+                                            new: [
+                                                name: branchName,
+                                                target: [
+                                                    message: commitMessage,
+                                                    hash: commitHash
+                                                ]
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+
+                            def dokployJson = new groovy.json.JsonOutput().toJson(dokployPayload)
+                            echo "Sending payload: ${dokployJson}"
+
+                            sh "curl -v -X POST '${DOKPLOY_WEBHOOK}' -H 'Content-Type: application/json' -d '${dokployJson}' 2>&1"
                             echo "=== End Dokploy Response ==="
                         }
                     }
@@ -157,7 +193,8 @@ stage('Build and Deploy') {
                 def flake8Count = sh(script: 'wc -l < /tmp/flake8.out 2>/dev/null || echo "0"', returnStdout: true).trim()
                 def pylintCount = sh(script: 'wc -l < /tmp/pylint.out 2>/dev/null || echo "0"', returnStdout: true).trim()
 
-                def desc = (fileExists('/tmp/flake8.out') && size('/tmp/flake8.out') > 0)
+                def flake8Exists = fileExists('/tmp/flake8.out') && new File('/tmp/flake8.out').length() > 0
+                def desc = flake8Exists
                     ? "Linting failed: ${flake8Count} flake8 errors, ${pylintCount} pylint issues"
                     : "CI checks failed"
                 desc = desc.take(140)
