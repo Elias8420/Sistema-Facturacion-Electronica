@@ -84,7 +84,7 @@ stage('Build and Deploy') {
                             echo "GIT_BRANCH env: $GIT_BRANCH"
                             GIT_COMMIT=$(git rev-parse HEAD)
                             echo "GIT_COMMIT: $GIT_COMMIT"
-                            if [ "$GIT_BRANCH" == "origin/develop" ]; then
+                            if [ "$GIT_BRANCH" = "origin/develop" ]; then
                                 TAG="latest-dev"
                                 echo "Branch is develop, using tag: latest-dev"
                             else
@@ -103,7 +103,7 @@ stage('Build and Deploy') {
                     steps {
                         sh '''
                             GIT_COMMIT=$(git rev-parse HEAD)
-                            if [ "$GIT_BRANCH" == "origin/develop" ]; then
+                            if [ "$GIT_BRANCH" = "origin/develop" ]; then
                                 TAG="latest-dev"
                             else
                                 TAG="latest"
@@ -119,16 +119,19 @@ stage('Build and Deploy') {
 
                 stage('Trigger Dokploy Deploy') {
                     steps {
-                        sh '''
+                        script {
+                            def branchFromPayload = "${ref}"  // Variable from Generic Webhook Trigger
                             echo "=== Dokploy Webhook Debug ==="
-                            echo "GIT_BRANCH: $GIT_BRANCH"
+                            echo "Branch from GitHub payload (ref): ${branchFromPayload}"
+                            echo "GIT_BRANCH (local): ${GIT_BRANCH}"
                             echo "DOKPLOY_WEBHOOK: ${DOKPLOY_WEBHOOK}"
-                            echo ""
-                            echo "Sending curl verbose..."
-                            curl -v -X POST "${DOKPLOY_WEBHOOK}" 2>&1
-                            echo ""
+
+                            def payload = '{"ref":"' + branchFromPayload + '"}'
+                            echo "Sending payload: ${payload}"
+
+                            sh "curl -v -X POST '${DOKPLOY_WEBHOOK}' -H 'Content-Type: application/json' -d '${payload}' 2>&1"
                             echo "=== End Dokploy Response ==="
-                        '''
+                        }
                     }
                 }
             }
