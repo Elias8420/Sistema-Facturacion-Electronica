@@ -17,30 +17,21 @@ pipeline {
 
         stage('Lint - flake8') {
             steps {
-                sh 'flake8 custom-addons/dte_sv/ --max-line-length=120 --ignore=E501,W503,E261'
+                sh 'flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 --ignore=E501,W503,E261'
             }
         }
 
         stage('Lint - pylint') {
             steps {
-                sh 'pylint custom-addons/dte_sv/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903'
+                sh 'pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903'
             }
         }
 
-        stage('Test - Validate JSON Schemas') {
+        stage('Test - pytest') {
             steps {
                 sh '''
-                    python3 -c "
-                    import json, sys, os
-                    schemas_dir = 'custom-addons/dte_sv/static/schemas'
-                    schemas = ['fe-f-v2.json', 'fe-ccf-v4.json', 'fe-nc-v4.json']
-                    for schema_file in schemas:
-                        path = os.path.join(schemas_dir, schema_file)
-                        with open(path) as f:
-                            json.load(f)
-                        print(f'OK: {schema_file}')
-                    print('All schemas are valid JSON')
-                    "
+                    pip install pytest jsonschema num2words requests -q
+                    pytest tests/ -v --tb=short
                 '''
             }
         }
