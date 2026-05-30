@@ -72,7 +72,7 @@ EOF
             }
         }
 
-        stage('Build and Deploy') {
+stage('Build and Deploy') {
             when {
                 expression { env.GIT_BRANCH == 'origin/develop' || env.GIT_BRANCH == 'origin/main' }
             }
@@ -80,12 +80,18 @@ EOF
                 stage('Build Docker Images') {
                     steps {
                         sh '''
+                            echo "=== Build Info ==="
+                            echo "GIT_BRANCH env: $GIT_BRANCH"
                             GIT_COMMIT=$(git rev-parse HEAD)
+                            echo "GIT_COMMIT: $GIT_COMMIT"
                             if [ "$GIT_BRANCH" == "origin/develop" ]; then
                                 TAG="latest-dev"
+                                echo "Branch is develop, using tag: latest-dev"
                             else
                                 TAG="latest"
+                                echo "Branch is main/production, using tag: latest"
                             fi
+                            echo "=========================="
                             docker build -t ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT} .
                             docker build -t ${REGISTRY}/${IMAGE_NAME}:${TAG} .
                             echo "Built: ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT} and ${TAG}"
@@ -114,8 +120,14 @@ EOF
                 stage('Trigger Dokploy Deploy') {
                     steps {
                         sh '''
-                            curl -X POST "${DOKPLOY_WEBHOOK}"
-                            echo "Dokploy deploy triggered"
+                            echo "=== Dokploy Webhook Debug ==="
+                            echo "GIT_BRANCH: $GIT_BRANCH"
+                            echo "DOKPLOY_WEBHOOK: ${DOKPLOY_WEBHOOK}"
+                            echo ""
+                            echo "Sending curl verbose..."
+                            curl -v -X POST "${DOKPLOY_WEBHOOK}" 2>&1
+                            echo ""
+                            echo "=== End Dokploy Response ==="
                         '''
                     }
                 }
