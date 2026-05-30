@@ -11,7 +11,7 @@ try:
 except ImportError:
     _HAS_JSONSCHEMA = False
 
-from odoo import models, fields, api
+from odoo import models, fields
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
@@ -81,9 +81,9 @@ class AccountMove(models.Model):
 
     def _generar_numero_control(self):
         self.ensure_one()
-        tipo  = self.tipo_dte or '01'
+        tipo = self.tipo_dte or '01'
         estab = (self.company_id.dte_establecimiento or 'S001').upper()
-        pv    = (self.company_id.dte_punto_venta     or 'P001').upper()
+        pv = (self.company_id.dte_punto_venta or 'P001').upper()
         correlativo = self.env['ir.sequence'].next_by_code(f'dte.sv.control.{tipo}') or '000000000000001'
         return f'DTE-{tipo}-{estab}{pv}-{correlativo}'
 
@@ -139,8 +139,8 @@ class AccountMove(models.Model):
         p = self.partner_id
 
         def _dir(depto, muni, complemento):
-            depto       = (depto or '').strip()
-            muni        = (muni or '').strip()
+            depto = (depto or '').strip()
+            muni = (muni or '').strip()
             complemento = (complemento or '').strip()[:200]
             if not (depto and muni and complemento):
                 return None
@@ -174,7 +174,7 @@ class AccountMove(models.Model):
         return receptor
 
     def _build_cuerpo(self, tipo):
-        lineas = self.invoice_line_ids.filtered(lambda l: l.display_type == 'product')
+        lineas = self.invoice_line_ids.filtered(lambda line: line.display_type == 'product')
         cuerpo = []
         for i, linea in enumerate(lineas, start=1):
             codigo = (linea.product_id.default_code or None) if linea.product_id else None
@@ -183,16 +183,16 @@ class AccountMove(models.Model):
                 # Precios IVA-incluido (13%); se derivan 4 decimales para que
                 # precioUni * cantidad - montoDescu == ventaGravada pase validación MH.
                 precio_uni = round(linea.price_unit * 1.13, 4)
-                bruto_iva  = precio_uni * linea.quantity
+                bruto_iva = precio_uni * linea.quantity
                 monto_desc = round(bruto_iva * (linea.discount or 0.0) / 100, 4)
-                gravada    = round(bruto_iva - monto_desc, 4)
-                tributos   = None
+                gravada = round(bruto_iva - monto_desc, 4)
+                tributos = None
             else:
                 precio_uni = linea.price_unit
-                bruto      = linea.price_unit * linea.quantity
+                bruto = linea.price_unit * linea.quantity
                 monto_desc = round(bruto * (linea.discount or 0.0) / 100, 8)
-                gravada    = round(linea.price_subtotal, 2)
-                tributos   = ['20'] if gravada > 0 else None
+                gravada = round(linea.price_subtotal, 2)
+                tributos = ['20'] if gravada > 0 else None
 
             item = {
                 'numItem':         i,
@@ -223,15 +223,14 @@ class AccountMove(models.Model):
                 ) if self.reversed_entry_id else ''
                 item['ivaPerci'] = 0.0
                 item['totalIva'] = round(gravada * 0.13, 8)
-                item['ivaRete']  = 0.0
+                item['ivaRete'] = 0.0
 
             cuerpo.append(item)
         return cuerpo
 
     def _build_resumen(self, tipo, cuerpo):
-        # Los totales se derivan del cuerpo para que coincidan exactamente con
-        # la suma de ventaGravada, evitando errores de redondeo frente al MH.
         total_grav = round(sum(i['ventaGravada'] for i in cuerpo), 2)
+        iva_nc = total_nc = tributos_nc = None
 
         if tipo == '01':
             total_iva_res = round(sum(i.get('ivaItem', 0.0) for i in cuerpo), 2)
@@ -239,16 +238,18 @@ class AccountMove(models.Model):
         if tipo == '03':
             # IVA derivado del totalGravada para satisfacer la validación MH:
             # tributos[20].valor == totalGravada * 0.13
-            iva_ccf       = round(total_grav * 0.13, 2)
-            total_pagar   = round(total_grav + iva_ccf, 2)
-            tributos_ccf  = [{'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
-                               'valor': iva_ccf}] if total_grav > 0 else None
+            iva_ccf = round(total_grav * 0.13, 2)
+            total_pagar = round(total_grav + iva_ccf, 2)
+            tributos_ccf = [
+                {'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
+                 'valor': iva_ccf}] if total_grav > 0 else None
 
         if tipo == '05':
-            iva_nc      = round(total_grav * 0.13, 2)
-            total_nc    = round(total_grav + iva_nc, 2)
-            tributos_nc = [{'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
-                             'valor': iva_nc}] if total_grav > 0 else None
+            iva_nc = round(total_grav * 0.13, 2)
+            total_nc = round(total_grav + iva_nc, 2)
+            tributos_nc = [
+                {'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
+                 'valor': iva_nc}] if total_grav > 0 else None
 
         if tipo == '01':
             return {
