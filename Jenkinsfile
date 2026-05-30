@@ -130,7 +130,8 @@ stage('Build and Deploy') {
                             // Parse GitHub payload to extract branch name, commit hash, and message
                             def parsedPayload = null
                             try {
-                                parsedPayload = readJSON(text: fullPayload)
+                                def slurper = new groovy.json.JsonSlurper()
+                                parsedPayload = slurper.parseText(fullPayload)
                             } catch (Exception e) {
                                 echo "Could not parse PAYLOAD as JSON: ${e.message}"
                             }
@@ -139,6 +140,14 @@ stage('Build and Deploy') {
                             def branchName = branchFromPayload
                             if (branchName.startsWith("refs/heads/")) {
                                 branchName = branchName.substring(11)  // "refs/heads/".length() == 11
+                            }
+
+                            // Fallback to GIT_BRANCH if ref is not properly set
+                            if (branchName == "/usr/share/jenkins/ref" || branchName.startsWith("/usr")) {
+                                branchName = env.GIT_BRANCH ?: "develop"
+                                if (branchName.startsWith("origin/")) {
+                                    branchName = branchName.substring(7)
+                                }
                             }
 
                             // Get commit hash and message from parsed payload
@@ -165,7 +174,8 @@ stage('Build and Deploy') {
                             def dokployJson = new groovy.json.JsonOutput().toJson(dokployPayload)
                             echo "Sending payload: ${dokployJson}"
 
-                            sh "curl -v -X POST '${DOKPLOY_WEBHOOK}' -H 'Content-Type: application/json' -d '${dokployJson}' 2>&1"
+                            // Use printf to avoid JSON escaping issues in shell
+                            sh "printf '%s' '${dokployJson}' | curl -v -X POST '${DOKPLOY_WEBHOOK}' -H 'Content-Type: application/json' -d @- 2>&1"
                             echo "=== End Dokploy Response ==="
                         }
                     }
@@ -193,7 +203,15 @@ stage('Build and Deploy') {
                 def flake8Count = sh(script: 'wc -l < /tmp/flake8.out 2>/dev/null || echo "0"', returnStdout: true).trim()
                 def pylintCount = sh(script: 'wc -l < /tmp/pylint.out 2>/dev/null || echo "0"', returnStdout: true).trim()
 
-                def flake8Exists = fileExists('/tmp/flake8.out') && new File('/tmp/flake8.out').length() > 0
+                // Check if flake8 output file exists and has content using readFile
+                def flake8Content = ''
+                try {
+                    flake8Content = readFile('/tmp/flake8.out')
+                } catch (Exception e) {
+                    flake8Content = ''
+                }
+                def flake8Exists = flake8Content.trim().length() > 0
+
                 def desc = flake8Exists
                     ? "Linting failed: ${flake8Count} flake8 errors, ${pylintCount} pylint issues"
                     : "CI checks failed"
