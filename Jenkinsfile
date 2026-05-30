@@ -7,6 +7,7 @@ pipeline {
         REGISTRY_CREDS = credentials('registry-fopinet-creds')
         GITHUB_TOKEN = credentials('github-api-token')
         DOKPLOY_WEBHOOK = 'https://dokploy.fopinet.com/api/deploy/compose/RJeR51sk8LAf8xMmYPkwl'
+        JENKINS_URL = 'https://jenkins.fopinet.com'
     }
 
     stages {
@@ -114,7 +115,7 @@ EOF
                     curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
                         -H "Content-Type: application/json" \
-                        -d '{"state":"success","context":"ci/jenkins","description":"All CI checks passed","target_url":"${BUILD_URL}console"}'
+                        -d '{"state":"success","context":"ci/jenkins","description":"All CI checks passed","target_url":"'${env.BUILD_URL}'console"}'
                 """
             }
         }
@@ -143,7 +144,7 @@ EOF
                     curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
                         -H "Content-Type: application/json" \
-                        -d "{\"state\":\"failure\",\"context\":\"ci/jenkins\",\"description\":\"${DESC}\",\"target_url\":\"${BUILD_URL}console\"}"
+                        -d "{\"state\":\"failure\",\"context\":\"ci/jenkins\",\"description\":\"${DESC}\",\"target_url\":\"'${env.BUILD_URL}'console\"}"
                 """
             }
         }
