@@ -110,42 +110,28 @@ EOF
         success {
             echo 'Pipeline completed successfully!'
             script {
-                sh """
-                    GIT_COMMIT=$(git rev-parse HEAD)
-                    curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
-                        -H "Authorization: token ${GITHUB_TOKEN}" \
-                        -H "Content-Type: application/json" \
-                        -d '{"state":"success","context":"ci/jenkins","description":"All CI checks passed","target_url":"'${env.BUILD_URL}'console"}'
-                """
+                def gitCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                def consoleUrl = "${env.BUILD_URL}console"
+                def payload = '{"state":"success","context":"ci/jenkins","description":"All CI checks passed","target_url":"' + consoleUrl + '"}'
+                sh "curl -s -X POST 'https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${gitCommit}' -H 'Authorization: token ${env.GITHUB_TOKEN}' -H 'Content-Type: application/json' -d '${payload}'"
             }
         }
         failure {
             echo 'Pipeline failed. Sending details to GitHub.'
             script {
-                sh """
-                    GIT_COMMIT=$(git rev-parse HEAD)
+                def gitCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                def consoleUrl = "${env.BUILD_URL}console"
 
-                    # Count errors from flake8 and pylint
-                    FLAKE8_COUNT=$(wc -l < /tmp/flake8.out 2>/dev/null || echo "0")
-                    PYLINE_COUNT=$(wc -l < /tmp/pylint.out 2>/dev/null || echo "0")
+                def flake8Count = sh(script: 'wc -l < /tmp/flake8.out 2>/dev/null || echo "0"', returnStdout: true).trim()
+                def pylintCount = sh(script: 'wc -l < /tmp/pylint.out 2>/dev/null || echo "0"', returnStdout: true).trim()
 
-                    # Build description
-                    if [ -f /tmp/flake8.out ] && [ -s /tmp/flake8.out ]; then
-                        DESC="Linting failed: ${FLAKE8_COUNT} flake8 errors, ${PYLINE_COUNT} pylint issues"
-                    else
-                        DESC="CI checks failed"
-                    fi
+                def desc = (fileExists('/tmp/flake8.out') && size('/tmp/flake8.out') > 0)
+                    ? "Linting failed: ${flake8Count} flake8 errors, ${pylintCount} pylint issues"
+                    : "CI checks failed"
+                desc = desc.take(140)
 
-                    # Truncate to 140 chars
-                    DESC=$(echo "$DESC" | cut -c1-140)
-
-                    echo "Sending to GitHub: $DESC"
-
-                    curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
-                        -H "Authorization: token ${GITHUB_TOKEN}" \
-                        -H "Content-Type: application/json" \
-                        -d "{\"state\":\"failure\",\"context\":\"ci/jenkins\",\"description\":\"${DESC}\",\"target_url\":\"'${env.BUILD_URL}'console\"}"
-                """
+                def payload = '{"state":"failure","context":"ci/jenkins","description":"' + desc + '","target_url":"' + consoleUrl + '"}'
+                sh "echo 'Sending to GitHub: ${desc}' && curl -s -X POST 'https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${gitCommit}' -H 'Authorization: token ${env.GITHUB_TOKEN}' -H 'Content-Type: application/json' -d '${payload}'"
             }
         }
     }
