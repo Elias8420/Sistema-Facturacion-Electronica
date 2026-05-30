@@ -32,12 +32,8 @@ EOF
         stage('CI - Lint & Test') {
             steps {
                 sh '''
-                    CONTAINER_ID=$(docker create -w /workspace dte-sv-test-env)
-                    docker cp custom-addons ${CONTAINER_ID}:/workspace/
-                    docker cp tests ${CONTAINER_ID}:/workspace/
-                    docker start ${CONTAINER_ID}
-                    docker exec ${CONTAINER_ID} sh -c "flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 --ignore=E501,W503,E261 && pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903 && pytest tests/ -v --tb=short"
-                    docker rm ${CONTAINER_ID}
+                    tar -c custom-addons tests | docker run --rm -i dte-sv-test-env tar -xf -C /workspace
+                    docker run --rm dte-sv-test-env sh -c "flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 --ignore=E501,W503,E261 && pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903 && pytest tests/ -v --tb=short"
                 '''
             }
         }
