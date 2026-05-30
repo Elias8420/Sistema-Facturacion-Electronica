@@ -20,6 +20,7 @@
         'security/ir.model.access.csv',
         'data/dte_sequence.xml',
         'views/res_company_views.xml',
+        'views/res_partner_views.xml',
         'views/account_move_views.xml',
     ],
     'installable': True,
