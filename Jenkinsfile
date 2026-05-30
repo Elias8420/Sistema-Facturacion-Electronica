@@ -15,6 +15,12 @@ pipeline {
             }
         }
 
+        stage('Setup - Install Dependencies') {
+            steps {
+                sh 'pip install flake8 pylint pytest jsonschema num2words requests -q'
+            }
+        }
+
         stage('Lint - flake8') {
             steps {
                 sh 'flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 --ignore=E501,W503,E261'
@@ -29,10 +35,7 @@ pipeline {
 
         stage('Test - pytest') {
             steps {
-                sh '''
-                    pip install pytest jsonschema num2words requests -q
-                    pytest tests/ -v --tb=short
-                '''
+                sh 'pytest tests/ -v --tb=short'
             }
         }
 
