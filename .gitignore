@@ -1,0 +1,23 @@
+# Variables de entorno — nunca subir credenciales
+.env
+
+# Pyc y caché de Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Odoo
+*.log
+filestore/
+config/odoo.conf
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+.claude/
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

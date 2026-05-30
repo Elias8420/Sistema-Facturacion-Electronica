@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_partner_form_dte_sv" model="ir.ui.view">
+        <field name="name">res.partner.form.dte.sv</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <notebook position="inside">
+                <page string="Facturación Electrónica DTE" name="dte_sv">
+
+                    <group string="Datos Tributarios">
+                        <group>
+                            <field name="dte_nrc"/>
+                            <field name="dte_cod_actividad"/>
+                            <field name="dte_desc_actividad"/>
+                        </group>
+                    </group>
+
+                    <group string="Dirección DTE">
+                        <group>
+                            <field name="dte_departamento" placeholder="ej. 02"/>
+                            <field name="dte_municipio"    placeholder="ej. 15"/>
+                        </group>
+                        <group>
+                            <field name="dte_complemento"
+                                   placeholder="ej. LOCAL 24, CTRO. COM. SANTA ANA..."
+                                   colspan="2"/>
+                        </group>
+                    </group>
+
+                </page>
+            </notebook>
+        </field>
+    </record>
+</odoo>
