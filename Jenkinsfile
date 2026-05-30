@@ -18,7 +18,7 @@ pipeline {
 
         stage('Setup - Install Dependencies') {
             steps {
-                sh 'pip install flake8 pylint pytest jsonschema num2words requests -q'
+                sh 'pip3 install flake8 pylint pytest jsonschema num2words requests -q'
             }
         }
 
@@ -43,7 +43,7 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 sh '''
-                    GIT_COMMIT=$(git rev-parse --short HEAD)
+                    GIT_COMMIT=$(git rev-parse HEAD)
                     docker build -t ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT} .
                     docker build -t ${REGISTRY}/${IMAGE_NAME}:latest .
                     echo "Built: ${REGISTRY}/${IMAGE_NAME}:\${GIT_COMMIT} and latest"
@@ -54,7 +54,7 @@ pipeline {
         stage('Push to Registry') {
             steps {
                 sh '''
-                    GIT_COMMIT=$(git rev-parse --short HEAD)
+                    GIT_COMMIT=$(git rev-parse HEAD)
                     echo "${REGISTRY_CREDS_PSW}" | docker login ${REGISTRY} -u "${REGISTRY_CREDS_USR}" --password-stdin
                     docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT}
                     docker push ${REGISTRY}/${IMAGE_NAME}:latest
@@ -79,7 +79,7 @@ pipeline {
             echo 'Pipeline completed successfully!'
             script {
                 sh '''
-                    GIT_COMMIT=$(git rev-parse --short HEAD)
+                    GIT_COMMIT=$(git rev-parse HEAD)
                     curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
                         -H "Content-Type: application/json" \
@@ -91,7 +91,7 @@ pipeline {
             echo 'Pipeline failed. Check Jenkins logs.'
             script {
                 sh '''
-                    GIT_COMMIT=$(git rev-parse --short HEAD)
+                    GIT_COMMIT=$(git rev-parse HEAD)
                     curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
                         -H "Content-Type: application/json" \
