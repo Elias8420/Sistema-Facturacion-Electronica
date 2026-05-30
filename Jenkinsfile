@@ -1,5 +1,11 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'python:3.11-slim'
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
+            reuseNode true
+        }
+    }
 
     environment {
         REGISTRY = 'registry.fopinet.com'
@@ -18,7 +24,7 @@ pipeline {
 
         stage('Setup - Install Dependencies') {
             steps {
-                sh 'python -m pip install flake8 pylint pytest jsonschema num2words requests -q'
+                sh 'pip install flake8 pylint pytest jsonschema num2words requests -q'
             }
         }
 
