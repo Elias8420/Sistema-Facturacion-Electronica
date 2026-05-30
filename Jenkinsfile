@@ -23,6 +23,7 @@ pipeline {
 FROM python:3.11-slim
 RUN pip install flake8 pylint pytest jsonschema num2words requests -q
 WORKDIR /workspace
+CMD ["sleep", "infinity"]
 EOF
                     docker build -t dte-sv-test-env -f Dockerfile.test .
                 '''
@@ -32,12 +33,11 @@ EOF
         stage('CI - Run Tests') {
             steps {
                 sh '''
-                    CONTAINER_ID=$(docker create dte-sv-test-env)
-                    docker cp custom-addons ${CONTAINER_ID}:/workspace/
-                    docker cp tests ${CONTAINER_ID}:/workspace/
-                    docker start ${CONTAINER_ID}
-                    docker exec ${CONTAINER_ID} sh -c "flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 --ignore=E501,W503,E261 && pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903 && pytest tests/ -v --tb=short"
-                    docker rm ${CONTAINER_ID}
+                    docker run -d --name dte-sv-test dte-sv-test-env
+                    docker cp custom-addons dte-sv-test:/workspace/
+                    docker cp tests dte-sv-test:/workspace/
+                    docker exec dte-sv-test sh -c "flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 --ignore=E501,W503,E261 && pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903 && pytest tests/ -v --tb=short"
+                    docker rm -f dte-sv-test
                 '''
             }
         }
