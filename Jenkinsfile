@@ -18,7 +18,7 @@ pipeline {
 
         stage('Setup - Install Dependencies') {
             steps {
-                sh 'python3 -m pip install flake8 pylint pytest jsonschema num2words requests -q'
+                sh 'python -m pip install flake8 pylint pytest jsonschema num2words requests -q'
             }
         }
 
