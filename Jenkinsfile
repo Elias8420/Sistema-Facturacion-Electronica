@@ -121,15 +121,15 @@ stage('Build and Deploy') {
                     steps {
                         script {
                             def branchFromPayload = "${ref}"  // Variable from Generic Webhook Trigger
+                            def fullPayload = "${PAYLOAD}"     // Full GitHub webhook payload
                             echo "=== Dokploy Webhook Debug ==="
                             echo "Branch from GitHub payload (ref): ${branchFromPayload}"
                             echo "GIT_BRANCH (local): ${GIT_BRANCH}"
                             echo "DOKPLOY_WEBHOOK: ${DOKPLOY_WEBHOOK}"
+                            echo "Full Payload: ${fullPayload}"
 
-                            def payload = '{"ref":"' + branchFromPayload + '"}'
-                            echo "Sending payload: ${payload}"
-
-                            sh "curl -v -X POST '${DOKPLOY_WEBHOOK}' -H 'Content-Type: application/json' -d '${payload}' 2>&1"
+                            // Send full payload to Dokploy
+                            sh "curl -v -X POST '${DOKPLOY_WEBHOOK}' -H 'Content-Type: application/json' -d '${fullPayload}' 2>&1"
                             echo "=== End Dokploy Response ==="
                         }
                     }
