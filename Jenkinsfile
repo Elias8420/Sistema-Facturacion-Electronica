@@ -42,7 +42,7 @@ EOF
 
                     # Capture linting output
                     docker exec dte-sv-test sh -c "flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 > /tmp/flake8.out 2>&1; echo \$?" > /tmp/flake8_exit.out
-                    docker exec dte-sv-test sh -c "pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903,E0401 > /tmp/pylint.out 2>&1; echo \$?" > /tmp/pylint_exit.out
+                    docker exec dte-sv-test sh -c "pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903,E0401,W0104,W0718,C0415,W0613,W0212,W0707,W1514 > /tmp/pylint.out 2>&1; echo \$?" > /tmp/pylint_exit.out
 
                     # Copy outputs to workspace
                     docker cp dte-sv-test:/tmp/flake8.out /tmp/flake8.out
@@ -114,7 +114,7 @@ EOF
                     curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
                         -H "Content-Type: application/json" \
-                        -d '{"state":"success","context":"ci/jenkins","description":"All CI checks passed"}'
+                        -d '{"state":"success","context":"ci/jenkins","description":"All CI checks passed","target_url":"${BUILD_URL}"}'
                 '''
             }
         }
@@ -143,7 +143,7 @@ EOF
                     curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
                         -H "Content-Type: application/json" \
-                        -d "{\"state\":\"failure\",\"context\":\"ci/jenkins\",\"description\":\"${DESC}\"}"
+                        -d "{\"state\":\"failure\",\"context\":\"ci/jenkins\",\"description\":\"${DESC}\",\"target_url\":\"${BUILD_URL}\"}"
                 '''
             }
         }

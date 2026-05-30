@@ -229,9 +229,8 @@ class AccountMove(models.Model):
         return cuerpo
 
     def _build_resumen(self, tipo, cuerpo):
-        # Los totales se derivan del cuerpo para que coincidan exactamente con
-        # la suma de ventaGravada, evitando errores de redondeo frente al MH.
         total_grav = round(sum(i['ventaGravada'] for i in cuerpo), 2)
+        iva_nc = total_nc = tributos_nc = None
 
         if tipo == '01':
             total_iva_res = round(sum(i.get('ivaItem', 0.0) for i in cuerpo), 2)
@@ -241,14 +240,16 @@ class AccountMove(models.Model):
             # tributos[20].valor == totalGravada * 0.13
             iva_ccf = round(total_grav * 0.13, 2)
             total_pagar = round(total_grav + iva_ccf, 2)
-            tributos_ccf = [{'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
-                              'valor': iva_ccf}] if total_grav > 0 else None
+            tributos_ccf = [
+                {'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
+                 'valor': iva_ccf}] if total_grav > 0 else None
 
         if tipo == '05':
             iva_nc = round(total_grav * 0.13, 2)
             total_nc = round(total_grav + iva_nc, 2)
-            tributos_nc = [{'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
-                             'valor': iva_nc}] if total_grav > 0 else None
+            tributos_nc = [
+                {'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
+                 'valor': iva_nc}] if total_grav > 0 else None
 
         if tipo == '01':
             return {
