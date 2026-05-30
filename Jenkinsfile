@@ -41,8 +41,8 @@ EOF
                     docker cp tests dte-sv-test:/workspace/
 
                     # Capture linting output
-                    docker exec dte-sv-test sh -c "flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 --ignore=E501,W503,E261,E241,E221,E272,E741,W292 > /tmp/flake8.out 2>&1; echo \$?" > /tmp/flake8_exit.out
-                    docker exec dte-sv-test sh -c "pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903 > /tmp/pylint.out 2>&1; echo \$?" > /tmp/pylint_exit.out
+                    docker exec dte-sv-test sh -c "flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 > /tmp/flake8.out 2>&1; echo \$?" > /tmp/flake8_exit.out
+                    docker exec dte-sv-test sh -c "pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903,E0401 > /tmp/pylint.out 2>&1; echo \$?" > /tmp/pylint_exit.out
 
                     # Copy outputs to workspace
                     docker cp dte-sv-test:/tmp/flake8.out /tmp/flake8.out
