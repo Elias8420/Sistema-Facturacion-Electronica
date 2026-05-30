@@ -20,7 +20,7 @@ services:
       start_period: 30s
 
   odoo:
-    image: odoo:17.0
+    image: registry.fopinet.com/dte_sv:latest
     restart: always
     depends_on:
       db:
@@ -37,7 +37,6 @@ services:
       - odoo_filestore:/var/lib/odoo
       - ./config/odoo.conf.tpl:/etc/odoo/odoo.conf.tpl:ro
       - ./config/init.sh:/init.sh:ro
-      - ./custom-addons:/mnt/extra-addons
     entrypoint: ["/bin/bash", "/init.sh"]
     networks:
       - odoo_net
