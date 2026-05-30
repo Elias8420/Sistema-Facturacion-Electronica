@@ -109,19 +109,19 @@ EOF
         success {
             echo 'Pipeline completed successfully!'
             script {
-                sh '''
+                sh """
                     GIT_COMMIT=$(git rev-parse HEAD)
                     curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
                         -H "Content-Type: application/json" \
-                        -d '{"state":"success","context":"ci/jenkins","description":"All CI checks passed","target_url":"${BUILD_URL}"}'
-                '''
+                        -d '{"state":"success","context":"ci/jenkins","description":"All CI checks passed","target_url":"${BUILD_URL}console"}'
+                """
             }
         }
         failure {
             echo 'Pipeline failed. Sending details to GitHub.'
             script {
-                sh '''
+                sh """
                     GIT_COMMIT=$(git rev-parse HEAD)
 
                     # Count errors from flake8 and pylint
@@ -143,8 +143,8 @@ EOF
                     curl -s -X POST "https://api.github.com/repos/Marroquin02/Sistema-Facturacion-Electronica/statuses/${GIT_COMMIT}" \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
                         -H "Content-Type: application/json" \
-                        -d "{\"state\":\"failure\",\"context\":\"ci/jenkins\",\"description\":\"${DESC}\",\"target_url\":\"${BUILD_URL}\"}"
-                '''
+                        -d "{\"state\":\"failure\",\"context\":\"ci/jenkins\",\"description\":\"${DESC}\",\"target_url\":\"${BUILD_URL}console\"}"
+                """
             }
         }
     }
