@@ -18,7 +18,21 @@ pipeline {
 
         stage('CI - Lint & Test') {
             steps {
-                sh 'docker run --rm -v /var/jenkins_home/workspace/dte_sv-ci-cd:/workspace -w /workspace python:3.11-slim sh -c "pip install flake8 pylint pytest jsonschema num2words requests -q && flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 --ignore=E501,W503,E261 && pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903 && pytest tests/ -v --tb=short"'
+                sh '''
+                    CONTAINER_ID=$(docker create -w /workspace python:3.11-slim)
+                    docker cp custom-addons ${CONTAINER_ID}:/workspace/
+                    docker cp tests ${CONTAINER_ID}:/workspace/
+                    docker cp config ${CONTAINER_ID}:/workspace/
+                    docker cp Dockerfile ${CONTAINER_ID}:/workspace/
+                    docker cp docker-compose.yml ${CONTAINER_ID}:/workspace/
+                    docker cp seed_data.py ${CONTAINER_ID}:/workspace/
+                    docker cp Jenkinsfile ${CONTAINER_ID}:/workspace/
+                    docker cp config/odoo.conf.tpl ${CONTAINER_ID}:/workspace/config/
+                    docker cp config/init.sh ${CONTAINER_ID}:/workspace/config/
+                    docker start ${CONTAINER_ID}
+                    docker exec ${CONTAINER_ID} sh -c "pip install flake8 pylint pytest jsonschema num2words requests -q && flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 --ignore=E501,W503,E261 && pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903 && pytest tests/ -v --tb=short"
+                    docker rm ${CONTAINER_ID}
+                '''
             }
         }
 
