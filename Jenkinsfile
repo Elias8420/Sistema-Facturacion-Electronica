@@ -140,7 +140,7 @@ stage('Build and Deploy') {
 EOF
                             )
                             echo "Sending payload: $DOKPLOY_PAYLOAD"
-                            printf '%s' "$DOKPLOY_PAYLOAD" | curl -v -X POST "${DOKPLOY_WEBHOOK}" -H 'Content-Type: application/json' -d @- 2>&1
+                            printf '%s' "$DOKPLOY_PAYLOAD" | curl -v -X POST "${DOKPLOY_WEBHOOK}" -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' -d @- 2>&1
                             echo ""
                             echo "=== End Dokploy Response ==="
                         '''
