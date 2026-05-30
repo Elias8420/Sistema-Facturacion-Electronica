@@ -119,65 +119,31 @@ stage('Build and Deploy') {
 
                 stage('Trigger Dokploy Deploy') {
                     steps {
-                        script {
-                            def branchFromPayload = "${ref}"  // Variable from Generic Webhook Trigger
-                            def fullPayload = "${PAYLOAD}"     // Full GitHub webhook payload
+                        sh '''
+                            GIT_COMMIT=$(git rev-parse HEAD)
+                            if [ "$GIT_BRANCH" = "origin/develop" ]; then
+                                BRANCH_NAME="develop"
+                            elif [ "$GIT_BRANCH" = "origin/main" ]; then
+                                BRANCH_NAME="main"
+                            else
+                                BRANCH_NAME=$(echo "$GIT_BRANCH" | sed 's|^origin/||')
+                            fi
+
                             echo "=== Dokploy Webhook Debug ==="
-                            echo "Branch from GitHub payload (ref): ${branchFromPayload}"
-                            echo "GIT_BRANCH (local): ${GIT_BRANCH}"
-                            echo "DOKPLOY_WEBHOOK: ${DOKPLOY_WEBHOOK}"
+                            echo "GIT_BRANCH: $GIT_BRANCH"
+                            echo "BRANCH_NAME: $BRANCH_NAME"
+                            echo "GIT_COMMIT: $GIT_COMMIT"
+                            echo "DOKPLOY_WEBHOOK: $DOKPLOY_WEBHOOK"
 
-                            // Parse GitHub payload to extract branch name, commit hash, and message
-                            def parsedPayload = null
-                            try {
-                                def slurper = new groovy.json.JsonSlurper()
-                                parsedPayload = slurper.parseText(fullPayload)
-                            } catch (Exception e) {
-                                echo "Could not parse PAYLOAD as JSON: ${e.message}"
-                            }
-
-                            // Extract branch name (remove refs/heads/ prefix)
-                            def branchName = branchFromPayload
-                            if (branchName.startsWith("refs/heads/")) {
-                                branchName = branchName.substring(11)  // "refs/heads/".length() == 11
-                            }
-
-                            // Fallback to GIT_BRANCH if ref is not properly set
-                            if (branchName == "/usr/share/jenkins/ref" || branchName.startsWith("/usr")) {
-                                branchName = env.GIT_BRANCH ?: "develop"
-                                if (branchName.startsWith("origin/")) {
-                                    branchName = branchName.substring(7)
-                                }
-                            }
-
-                            // Get commit hash and message from parsed payload
-                            def commitHash = parsedPayload?.after ?: sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-                            def commitMessage = parsedPayload?.head_commit?.message ?: "Auto deploy"
-
-                            // Build Bitbucket-style payload for Dokploy
-                            def dokployPayload = [
-                                push: [
-                                    changes: [
-                                        [
-                                            new: [
-                                                name: branchName,
-                                                target: [
-                                                    message: commitMessage,
-                                                    hash: commitHash
-                                                ]
-                                            ]
-                                        ]
-                                    ]
-                                ]
-                            ]
-
-                            def dokployJson = new groovy.json.JsonOutput().toJson(dokployPayload)
-                            echo "Sending payload: ${dokployJson}"
-
-                            // Use printf to avoid JSON escaping issues in shell
-                            sh "printf '%s' '${dokployJson}' | curl -v -X POST '${DOKPLOY_WEBHOOK}' -H 'Content-Type: application/json' -d @- 2>&1"
+                            DOKPLOY_PAYLOAD=$(cat <<EOF
+{"ref":"refs/heads/${BRANCH_NAME}","after":"${GIT_COMMIT}"}
+EOF
+                            )
+                            echo "Sending payload: $DOKPLOY_PAYLOAD"
+                            printf '%s' "$DOKPLOY_PAYLOAD" | curl -v -X POST "${DOKPLOY_WEBHOOK}" -H 'Content-Type: application/json' -d @- 2>&1
+                            echo ""
                             echo "=== End Dokploy Response ==="
-                        }
+                        '''
                     }
                 }
             }
