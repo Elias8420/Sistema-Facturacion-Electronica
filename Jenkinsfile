@@ -7,6 +7,7 @@ pipeline {
         REGISTRY_CREDS = credentials('registry-fopinet-creds')
         GITHUB_TOKEN = credentials('github-api-token')
         DOKPLOY_WEBHOOK = 'https://dokploy.fopinet.com/api/deploy/compose/RJeR51sk8LAf8xMmYPkwl'
+        WORKSPACE = '/var/jenkins_home/workspace/dte_sv-ci-cd'
     }
 
     stages {
@@ -19,11 +20,12 @@ pipeline {
         stage('CI - Lint & Test') {
             steps {
                 sh '''
+                    ls -la ${WORKSPACE}/
                     docker run --rm \
-                        -v /var/jenkins_home/workspace/dte_sv-ci-cd:/app \
-                        -w /app \
+                        -v ${WORKSPACE}:${WORKSPACE} \
+                        -w ${WORKSPACE} \
                         python:3.11-slim \
-                        sh -c "pip install flake8 pylint pytest jsonschema num2words requests -q && flake8 custom-addons/dte_sv/ tests/ --max-line-length=120 --ignore=E501,W503,E261 && pylint custom-addons/dte_sv/ tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903 && pytest tests/ -v --tb=short"
+                        sh -c "ls -la ${WORKSPACE}/ && pip install flake8 pylint pytest jsonschema num2words requests -q && flake8 ${WORKSPACE}/custom-addons/dte_sv/ ${WORKSPACE}/tests/ --max-line-length=120 --ignore=E501,W503,E261 && pylint ${WORKSPACE}/custom-addons/dte_sv/ ${WORKSPACE}/tests/ --max-line-length=120 --disable=C0114,C0115,C0116,R0801,R0903 && pytest ${WORKSPACE}/tests/ -v --tb=short"
                 '''
             }
         }
