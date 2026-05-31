@@ -41,6 +41,17 @@ services:
     networks:
       - odoo_net
 
+  firmador:
+    image: registry.fopinet.com/firmador-mh:latest
+    container_name: svfe-api-firmador
+    environment:
+      TZ: America/El_Salvador
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-nonssl}
+    working_dir: /app
+    volumes:
+      - ../files/uploads:/app/uploads
+    restart: always
+
 volumes:
   postgres_data:
   odoo_filestore:
