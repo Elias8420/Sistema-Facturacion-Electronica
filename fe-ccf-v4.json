@@ -930,19 +930,6 @@
                 "observaciones"
             ]
         },
-        "extension": {
-            "description": "Extensión",
-            "type": ["object", "null"],
-            "properties": {
-                "nombEntrega": {"type": ["string", "null"], "maxLength": 100},
-                "docuEntrega": {"type": ["string", "null"], "maxLength": 25},
-                "nombRecibe":  {"type": ["string", "null"], "maxLength": 100},
-                "docuRecibe":  {"type": ["string", "null"], "maxLength": 25},
-                "observaciones": {"type": ["string", "null"], "maxLength": 3000},
-                "placaVehiculo": {"type": ["string", "null"], "maxLength": 10}
-            },
-            "additionalProperties": false
-        },
         "apendice": {
             "description": "Apéndice",
             "type": [
@@ -989,7 +976,6 @@
         "ventaTercero",
         "cuerpoDocumento",
         "resumen",
-        "extension",
         "apendice"
     ]
 }

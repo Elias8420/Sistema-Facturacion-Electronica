@@ -1,6 +1,6 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Comprobante de Crédito Fiscal Electrónica",
+    "title": "Factura Electrónica",
     "type": "object",
     "properties": {
         "identificacion": {
@@ -10,7 +10,7 @@
                 "version": {
                     "type": "integer",
                     "description": "Versión",
-                    "const": 4
+                    "const": 2
                 },
                 "ambiente": {
                     "type": "string",
@@ -23,20 +23,20 @@
                 "tipoDte": {
                     "type": "string",
                     "description": "Tipo de Documento",
-                    "const": "03"
+                    "const": "01"
                 },
                 "numeroControl": {
                     "type": "string",
                     "description": "Número de Control",
-                    "maxLength": 31,
                     "minLength": 31,
-                    "pattern": "^DTE-03-(M|B|S|P)([0-9]{3})(P)([0-9]{3})-[0-9]{15}"
+                    "maxLength": 31,
+                    "pattern": "^DTE-01-(M|B|S|P)([0-9]{3})(P)([0-9]{3})-[0-9]{15}"
                 },
                 "codigoGeneracion": {
                     "type": "string",
                     "description": "Código de Generación",
-                    "maxLength": 36,
                     "minLength": 36,
+                    "maxLength": 36,
                     "pattern": "^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$"
                 },
                 "tipoModelo": {
@@ -76,8 +76,8 @@
                         "string",
                         "null"
                     ],
-                    "maxLength": 500,
-                    "minLength": 1
+                    "minLength": 1,
+                    "maxLength": 500
                 },
                 "fecEmi": {
                     "type": "string",
@@ -106,11 +106,11 @@
                 "codigoGeneracion",
                 "tipoModelo",
                 "tipoOperacion",
-                "tipoContingencia",
-                "motivoContin",
                 "fecEmi",
                 "horEmi",
-                "tipoMoneda"
+                "tipoMoneda",
+                "tipoContingencia",
+                "motivoContin"
             ]
         },
         "documentoRelacionado": {
@@ -128,7 +128,7 @@
                     },
                     "tipoGeneracion": {
                         "type": "integer",
-                        "description": "Tipo de Generación del Documento relacionado"
+                        "description": "Tipo de Generación del Documento Relacionado"
                     },
                     "numeroDocumento": {
                         "description": "Número de documento relacionado",
@@ -159,7 +159,8 @@
             "properties": {
                 "nit": {
                     "description": "NIT (Emisor)",
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 14
                 },
                 "nrc": {
                     "description": "NRC (Emisor)",
@@ -170,8 +171,8 @@
                 "nombre": {
                     "type": "string",
                     "description": "Nombre (Emisor)",
-                    "maxLength": 250,
-                    "minLength": 1
+                    "minLength": 1,
+                    "maxLength": 250
                 },
                 "codActividad": {
                     "type": "string",
@@ -191,8 +192,8 @@
                         "string",
                         "null"
                     ],
-                    "maxLength": 150,
-                    "minLength": 1
+                    "minLength": 1,
+                    "maxLength": 150
                 },
                 "direccion": {
                     "type": "object",
@@ -213,8 +214,8 @@
                         "complemento": {
                             "type": "string",
                             "description": "Dirección complemento (Emisor)",
-                            "maxLength": 200,
-                            "minLength": 1
+                            "minLength": 1,
+                            "maxLength": 200
                         }
                     },
                     "additionalProperties": false,
@@ -252,8 +253,8 @@
                         "string",
                         "null"
                     ],
-                    "maxLength": 15,
-                    "minLength": 1
+                    "minLength": 1,
+                    "maxLength": 15
                 }
             },
             "additionalProperties": false,
@@ -272,12 +273,27 @@
             ]
         },
         "receptor": {
-            "type": "object",
+            "type": [
+                "object",
+                "null"
+            ],
             "description": "Receptor",
             "properties": {
-                "nit": {
-                    "type": "string",
-                    "description": "NIT (Receptor)"
+                "tipoDocumento": {
+                    "type": [
+                        "null",
+                        "string"
+                    ],
+                    "description": "Tipo de documento de identificación (Receptor)"
+                },
+                "numDocumento": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "Número de documento de Identificación (Receptor)",
+                    "minLength": 1,
+                    "maxLength": 20
                 },
                 "nrc": {
                     "type": [
@@ -289,34 +305,37 @@
                     "maxLength": 8
                 },
                 "nombre": {
-                    "type": "string",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
                     "description": "Nombre (Receptor)",
                     "minLength": 1,
                     "maxLength": 250
                 },
                 "codActividad": {
-                    "type": "string",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
                     "description": "Código de Actividad Económica (Receptor)",
                     "minLength": 5,
                     "maxLength": 6
                 },
                 "descActividad": {
-                    "type": "string",
-                    "description": "Actividad Económica (Receptor)",
-                    "minLength": 5,
-                    "maxLength": 150
-                },
-                "nombreComercial": {
-                    "description": "Nombre Comercial (Receptor)",
                     "type": [
                         "string",
                         "null"
                     ],
-                    "minLength": 1,
+                    "description": "Actividad Económica (Receptor)",
+                    "minLength": 5,
                     "maxLength": 150
                 },
                 "direccion": {
-                    "type": "object",
+                    "type": [
+                        "object",
+                        "null"
+                    ],
                     "description": "Dirección (Receptor)",
                     "properties": {
                         "departamento": {
@@ -361,18 +380,18 @@
                         "null"
                     ],
                     "description": "Correo electrónico (Receptor)",
-                    "minLength": 1,
+                    "minLength": 6,
                     "maxLength": 100
                 }
             },
             "additionalProperties": false,
             "required": [
-                "nit",
+                "tipoDocumento",
+                "numDocumento",
                 "nrc",
                 "nombre",
                 "codActividad",
                 "descActividad",
-                "nombreComercial",
                 "direccion",
                 "telefono",
                 "correo"
@@ -402,7 +421,7 @@
                             "null"
                         ],
                         "description": "Identificación del documento asociado",
-                        "minLength": 3,
+                        "minimum": 3,
                         "maxLength": 100
                     },
                     "detalleDocumento": {
@@ -411,7 +430,7 @@
                             "null"
                         ],
                         "description": "Descripción de documento asociado",
-                        "minLength": 3,
+                        "minimum": 3,
                         "maxLength": 300
                     },
                     "medico": {
@@ -427,7 +446,7 @@
                                     "null"
                                 ],
                                 "description": "Nombre de médico que presta el Servicio",
-                                "minLength": 1,
+                                "minimum": 1,
                                 "maxLength": 100
                             },
                             "nit": {
@@ -447,7 +466,10 @@
                                 "maxLength": 25
                             },
                             "tipoServicio": {
-                                "type": "number",
+                                "type": [
+                                    "number",
+                                    "null"
+                                ],
                                 "description": "Código del Servicio realizado",
                                 "minimum": 1,
                                 "maximum": 6
@@ -535,30 +557,6 @@
                         "minLength": 1,
                         "maxLength": 36
                     },
-                    "codigo": {
-                        "description": "Código",
-                        "type": [
-                            "string",
-                            "null"
-                        ],
-                        "maxLength": 25,
-                        "minLength": 1
-                    },
-                    "codTributo": {
-                        "description": "Tributo sujeto a cálculo de IVA.",
-                        "type": [
-                            "string",
-                            "null"
-                        ],
-                        "maxLength": 2,
-                        "minLength": 2
-                    },
-                    "descripcion": {
-                        "type": "string",
-                        "description": "Descripción",
-                        "minLength": 1,
-                        "maxLength": 1500
-                    },
                     "cantidad": {
                         "type": "number",
                         "description": "Cantidad",
@@ -566,29 +564,52 @@
                         "exclusiveMinimum": 0,
                         "multipleOf": 1e-08
                     },
+                    "codigo": {
+                        "description": "Código",
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "minLength": 1,
+                        "maxLength": 25
+                    },
+                    "codTributo": {
+                        "description": "Tributo sujeto a cálculo de IVA",
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "minLength": 2,
+                        "maxLength": 2
+                    },
                     "uniMedida": {
                         "type": "integer",
                         "description": "Unidad de Medida",
                         "minimum": 1,
                         "maximum": 99
                     },
+                    "descripcion": {
+                        "type": "string",
+                        "description": "Descripción",
+                        "minLength": 1,
+                        "maxLength": 1500
+                    },
                     "precioUni": {
                         "type": "number",
                         "description": "Precio Unitario",
                         "exclusiveMaximum": 100000000000,
-                        "minimum": 0,
                         "multipleOf": 1e-08
                     },
                     "montoDescu": {
                         "type": "number",
-                        "description": "Descuento  por ítem",
+                        "description": "Descuento por ítem",
                         "minimum": 0,
                         "exclusiveMaximum": 100000000000,
                         "multipleOf": 1e-08
                     },
                     "ventaNoSuj": {
                         "type": "number",
-                        "description": "Ventas No Sujetas",
+                        "description": "Ventas no Sujetas",
                         "minimum": 0,
                         "exclusiveMaximum": 100000000000,
                         "multipleOf": 1e-08
@@ -615,8 +636,8 @@
                         ],
                         "items": {
                             "type": "string",
-                            "maxLength": 2,
-                            "minLength": 2
+                            "minLength": 2,
+                            "maxLength": 2
                         },
                         "minItems": 1,
                         "uniqueItems": true
@@ -630,9 +651,16 @@
                     },
                     "noGravado": {
                         "type": "number",
-                        "description": "Cargos / Abonos que no afectan la base imponible",
+                        "description": "Cargos/Abonos que no afectan la base imponible",
                         "exclusiveMaximum": 100000000000,
                         "exclusiveMinimum": -100000000000,
+                        "multipleOf": 1e-08
+                    },
+                    "ivaItem": {
+                        "type": "number",
+                        "description": "IVA por ítem",
+                        "minimum": 0,
+                        "exclusiveMaximum": 100000000000,
                         "multipleOf": 1e-08
                     }
                 },
@@ -653,7 +681,8 @@
                     "ventaGravada",
                     "tributos",
                     "psv",
-                    "noGravado"
+                    "noGravado",
+                    "ivaItem"
                 ]
             },
             "minItems": 1,
@@ -672,7 +701,7 @@
                 },
                 "totalExenta": {
                     "type": "number",
-                    "description": "Total de Operaciones Exentas",
+                    "description": "Total de Operaciones exentas",
                     "minimum": 0,
                     "exclusiveMaximum": 100000000000,
                     "multipleOf": 0.01
@@ -715,13 +744,13 @@
                 "porcentajeDescuento": {
                     "type": "number",
                     "description": "Porcentaje de Descuento",
-                    "minimum": 0,
                     "maximum": 100,
+                    "minimum": 0,
                     "multipleOf": 0.01
                 },
                 "totalDescu": {
                     "type": "number",
-                    "description": "Total Descuentos",
+                    "description": "Total de Descuentos",
                     "minimum": 0,
                     "exclusiveMaximum": 100000000000,
                     "multipleOf": 0.01
@@ -771,13 +800,6 @@
                     "exclusiveMaximum": 100000000000,
                     "multipleOf": 0.01
                 },
-                "ivaPerci": {
-                    "type": "number",
-                    "description": "IVA Percibido",
-                    "minimum": 0,
-                    "exclusiveMaximum": 100000000000,
-                    "multipleOf": 0.01
-                },
                 "ivaRete": {
                     "type": "number",
                     "description": "IVA Retenido",
@@ -811,9 +833,16 @@
                         "string",
                         "null"
                     ],
-                    "description": "Valor en Letras",
-                    "minLength": 8,
+                    "description": "Valor en Condicion de la Operacion",
+                    "minLength": 1,
                     "maxLength": 200
+                },
+                "totalIva": {
+                    "type": "number",
+                    "description": "IVA 13%",
+                    "minimum": 0,
+                    "exclusiveMaximum": 100000000000,
+                    "multipleOf": 0.01
                 },
                 "saldoFavor": {
                     "type": "number",
@@ -881,13 +910,12 @@
                             "referencia",
                             "periodo",
                             "plazo"
-                        ],
-                        "maxLength": 3
+                        ]
                     },
                     "minItems": 1
                 },
                 "numPagoElectronico": {
-                    "description": "Número de Pago Electrónico",
+                    "description": "Número de pago Electrónico",
                     "type": [
                         "string",
                         "null"
@@ -901,7 +929,7 @@
                     ],
                     "description": "Observaciones",
                     "minLength": 1,
-                    "maximum": 3000
+                    "maxLength": 3000
                 }
             },
             "additionalProperties": false,
@@ -917,31 +945,18 @@
                 "totalDescu",
                 "tributos",
                 "subTotal",
-                "ivaPerci",
                 "ivaRete",
                 "montoTotalOperacion",
                 "totalNoGravado",
                 "totalPagar",
                 "totalLetras",
+                "totalIva",
                 "saldoFavor",
                 "condicionOperacion",
                 "pagos",
                 "numPagoElectronico",
                 "observaciones"
             ]
-        },
-        "extension": {
-            "description": "Extensión",
-            "type": ["object", "null"],
-            "properties": {
-                "nombEntrega": {"type": ["string", "null"], "maxLength": 100},
-                "docuEntrega": {"type": ["string", "null"], "maxLength": 25},
-                "nombRecibe":  {"type": ["string", "null"], "maxLength": 100},
-                "docuRecibe":  {"type": ["string", "null"], "maxLength": 25},
-                "observaciones": {"type": ["string", "null"], "maxLength": 3000},
-                "placaVehiculo": {"type": ["string", "null"], "maxLength": 10}
-            },
-            "additionalProperties": false
         },
         "apendice": {
             "description": "Apéndice",
@@ -989,7 +1004,6 @@
         "ventaTercero",
         "cuerpoDocumento",
         "resumen",
-        "extension",
         "apendice"
     ]
 }

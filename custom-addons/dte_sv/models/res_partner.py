@@ -30,3 +30,7 @@ class ResPartner(models.Model):
         string='Complemento (Dirección)',
         help='Dirección detallada del receptor tal como debe aparecer en el DTE.',
     )
+    dte_distrito = fields.Char(
+        string='Distrito',
+        help='Código de distrito según catálogo del MH (requerido en NC).',
+    )

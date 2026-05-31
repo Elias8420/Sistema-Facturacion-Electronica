@@ -57,6 +57,15 @@
                                nolabel="1"/>
                     </group>
 
+                    <!-- Acciones sobre el JSON -->
+                    <div invisible="estado_dte not in ('pendiente', 'rechazado')"
+                         style="margin-bottom:8px;">
+                        <button name="action_regenerar_dte_json"
+                                string="Regenerar JSON DTE"
+                                type="object"
+                                class="btn btn-secondary"/>
+                    </div>
+
                     <!-- JSON completo del DTE -->
                     <group string="JSON DTE">
                         <field name="dte_json"

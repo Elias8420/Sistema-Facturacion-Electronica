@@ -366,8 +366,6 @@
                 "numDocumento",
                 "nrc",
                 "nombre",
-                "codActividad",
-                "descActividad",
                 "nombreComercial",
                 "direccion",
                 "telefono",
@@ -485,14 +483,14 @@
                         "multipleOf": 1e-08
                     },
                     "ventaNoSuj": {
-                        "type": "number",
+                        "type": ["number", "null"],
                         "description": "Ventas no Sujetas",
                         "minimum": 0,
                         "exclusiveMaximum": 100000000000,
                         "multipleOf": 1e-08
                     },
                     "ventaExenta": {
-                        "type": "number",
+                        "type": ["number", "null"],
                         "description": "Ventas Exentas",
                         "minimum": 0,
                         "exclusiveMaximum": 100000000000,
