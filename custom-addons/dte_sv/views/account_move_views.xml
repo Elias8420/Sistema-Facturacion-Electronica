@@ -6,13 +6,17 @@
         <field name="inherit_id" ref="account.view_move_form"/>
         <field name="arch" type="xml">
 
-            <!-- Botón "Enviar al MH" en el header de la factura -->
-            <xpath expr="//header" position="inside">
+            <!-- Botones DTE después de Send & Print -->
+            <xpath expr="//button[@name='action_register_payment']" position="after">
                 <button name="action_enviar_dte"
                         string="Enviar al MH"
                         type="object"
                         class="btn-primary"
                         invisible="state != 'posted' or estado_dte not in ('pendiente', 'rechazado')"/>
+                <button name="action_descargar_json_dte"
+                        string="Descargar JSON DTE"
+                        type="object"
+                        class="btn-secondary"/>
             </xpath>
 
             <!-- Tab DTE -->
