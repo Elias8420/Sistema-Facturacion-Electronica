@@ -50,7 +50,7 @@ def get_config():
         or input("  Usuario admin [admin]: ").strip()
         or "admin"
     )
-    password = env.get("ODOO_ADMIN_PASSWD") or getpass.getpass("  Contraseña: ")
+    password = env.get("ODOO_PASSWORD") or getpass.getpass("  Contraseña: ")
 
     print()
     return url.rstrip("/"), db, user, password
