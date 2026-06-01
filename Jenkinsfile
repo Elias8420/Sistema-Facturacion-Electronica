@@ -72,36 +72,80 @@ EOF
             }
         }
 
-        stage('Build Docker Images') {
-            steps {
-                sh '''
-                    GIT_COMMIT=$(git rev-parse HEAD)
-                    docker build -t ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT} .
-                    docker build -t ${REGISTRY}/${IMAGE_NAME}:latest .
-                    echo "Built: ${REGISTRY}/${IMAGE_NAME}:\${GIT_COMMIT} and latest"
-                '''
+stage('Build and Deploy') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/develop' || env.GIT_BRANCH == 'origin/main' }
             }
-        }
+            stages {
+                stage('Build Docker Images') {
+                    steps {
+                        sh '''
+                            echo "=== Build Info ==="
+                            echo "GIT_BRANCH env: $GIT_BRANCH"
+                            GIT_COMMIT=$(git rev-parse HEAD)
+                            echo "GIT_COMMIT: $GIT_COMMIT"
+                            if [ "$GIT_BRANCH" = "origin/develop" ]; then
+                                TAG="latest-dev"
+                                echo "Branch is develop, using tag: latest-dev"
+                            else
+                                TAG="latest"
+                                echo "Branch is main/production, using tag: latest"
+                            fi
+                            echo "=========================="
+                            docker build -t ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT} .
+                            docker build -t ${REGISTRY}/${IMAGE_NAME}:${TAG} .
+                            echo "Built: ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT} and ${TAG}"
+                        '''
+                    }
+                }
 
-        stage('Push to Registry') {
-            steps {
-                sh '''
-                    GIT_COMMIT=$(git rev-parse HEAD)
-                    echo "${REGISTRY_CREDS_PSW}" | docker login ${REGISTRY} -u "${REGISTRY_CREDS_USR}" --password-stdin
-                    docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT}
-                    docker push ${REGISTRY}/${IMAGE_NAME}:latest
-                    docker logout ${REGISTRY}
-                    echo "Images pushed successfully"
-                '''
-            }
-        }
+                stage('Push to Registry') {
+                    steps {
+                        sh '''
+                            GIT_COMMIT=$(git rev-parse HEAD)
+                            if [ "$GIT_BRANCH" = "origin/develop" ]; then
+                                TAG="latest-dev"
+                            else
+                                TAG="latest"
+                            fi
+                            echo "${REGISTRY_CREDS_PSW}" | docker login ${REGISTRY} -u "${REGISTRY_CREDS_USR}" --password-stdin
+                            docker push ${REGISTRY}/${IMAGE_NAME}:${GIT_COMMIT}
+                            docker push ${REGISTRY}/${IMAGE_NAME}:${TAG}
+                            docker logout ${REGISTRY}
+                            echo "Images pushed successfully"
+                        '''
+                    }
+                }
 
-        stage('Trigger Dokploy Deploy') {
-            steps {
-                sh '''
-                    curl -X POST "${DOKPLOY_WEBHOOK}"
-                    echo "Dokploy deploy triggered"
-                '''
+                stage('Trigger Dokploy Deploy') {
+                    steps {
+                        sh '''
+                            GIT_COMMIT=$(git rev-parse HEAD)
+                            if [ "$GIT_BRANCH" = "origin/develop" ]; then
+                                BRANCH_NAME="develop"
+                            elif [ "$GIT_BRANCH" = "origin/main" ]; then
+                                BRANCH_NAME="main"
+                            else
+                                BRANCH_NAME=$(echo "$GIT_BRANCH" | sed 's|^origin/||')
+                            fi
+
+                            echo "=== Dokploy Webhook Debug ==="
+                            echo "GIT_BRANCH: $GIT_BRANCH"
+                            echo "BRANCH_NAME: $BRANCH_NAME"
+                            echo "GIT_COMMIT: $GIT_COMMIT"
+                            echo "DOKPLOY_WEBHOOK: $DOKPLOY_WEBHOOK"
+
+                            DOKPLOY_PAYLOAD=$(cat <<EOF
+{"ref":"refs/heads/${BRANCH_NAME}","after":"${GIT_COMMIT}"}
+EOF
+                            )
+                            echo "Sending payload: $DOKPLOY_PAYLOAD"
+                            printf '%s' "$DOKPLOY_PAYLOAD" | curl -v -X POST "${DOKPLOY_WEBHOOK}" -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' -d @- 2>&1
+                            echo ""
+                            echo "=== End Dokploy Response ==="
+                        '''
+                    }
+                }
             }
         }
     }
@@ -125,7 +169,16 @@ EOF
                 def flake8Count = sh(script: 'wc -l < /tmp/flake8.out 2>/dev/null || echo "0"', returnStdout: true).trim()
                 def pylintCount = sh(script: 'wc -l < /tmp/pylint.out 2>/dev/null || echo "0"', returnStdout: true).trim()
 
-                def desc = (fileExists('/tmp/flake8.out') && size('/tmp/flake8.out') > 0)
+                // Check if flake8 output file exists and has content using readFile
+                def flake8Content = ''
+                try {
+                    flake8Content = readFile('/tmp/flake8.out')
+                } catch (Exception e) {
+                    flake8Content = ''
+                }
+                def flake8Exists = flake8Content.trim().length() > 0
+
+                def desc = flake8Exists
                     ? "Linting failed: ${flake8Count} flake8 errors, ${pylintCount} pylint issues"
                     : "CI checks failed"
                 desc = desc.take(140)

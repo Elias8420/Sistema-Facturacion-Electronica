@@ -13,6 +13,10 @@
                         type="object"
                         class="btn-primary"
                         invisible="state != 'posted' or estado_dte not in ('pendiente', 'rechazado')"/>
+                <button name="action_descargar_json_dte"
+                        string="Descargar JSON DTE"
+                        type="object"
+                        class="btn-secondary"/>
             </xpath>
 
             <notebook position="inside">
