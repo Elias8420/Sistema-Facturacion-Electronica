@@ -2,6 +2,7 @@ import uuid
 import json
 import logging
 import os
+import base64
 
 import requests
 
@@ -11,7 +12,7 @@ try:
 except ImportError:
     _HAS_JSONSCHEMA = False
 
-from odoo import models, fields
+from odoo import models, fields, api
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
@@ -65,6 +66,37 @@ class AccountMove(models.Model):
     dte_codigo_mensaje = fields.Char(string='Código Mensaje MH', readonly=True, copy=False)
     dte_descripcion_mensaje = fields.Char(string='Descripción Mensaje MH', readonly=True, copy=False)
 
+    # ── Campos de trazabilidad ─────────────────────────────────────────────────
+
+    dte_intentos_envio = fields.Integer(
+        string='Intentos de Envío MH',
+        default=0,
+        readonly=True,
+        copy=False,
+        help='Número de veces que se intentó enviar el DTE al Ministerio de Hacienda.',
+    )
+    dte_ultimo_envio = fields.Datetime(
+        string='Último Envío MH',
+        readonly=True,
+        copy=False,
+        help='Fecha y hora del último intento de envío al MH.',
+    )
+    dte_respuesta_mh = fields.Text(
+        string='Respuesta MH (raw)',
+        readonly=True,
+        copy=False,
+        help='JSON completo devuelto por el Ministerio de Hacienda en el último envío.',
+    )
+
+    # ── Historial de correos ────────────────────────────────────────────────
+    dte_mail_log_ids = fields.One2many(
+        'dte.mail.log',
+        'move_id',
+        string='Historial de correos DTE',
+        readonly=True,
+        copy=False,
+    )
+
     # ── Helpers de generación ──────────────────────────────────────────────────
 
     def _numero_a_letras(self, amount):
@@ -81,9 +113,9 @@ class AccountMove(models.Model):
 
     def _generar_numero_control(self):
         self.ensure_one()
-        tipo = self.tipo_dte or '01'
+        tipo  = self.tipo_dte or '01'
         estab = (self.company_id.dte_establecimiento or 'S001').upper()
-        pv = (self.company_id.dte_punto_venta or 'P001').upper()
+        pv    = (self.company_id.dte_punto_venta     or 'P001').upper()
         correlativo = self.env['ir.sequence'].next_by_code(f'dte.sv.control.{tipo}') or '000000000000001'
         return f'DTE-{tipo}-{estab}{pv}-{correlativo}'
 
@@ -154,15 +186,15 @@ class AccountMove(models.Model):
 
         if tipo == '03':
             return {
-                'nit':             (p.vat or '').strip() or None,
-                'nrc':             (p.dte_nrc or '').strip() or None,
-                'nombre':          (p.name or '')[:250] or None,
-                'codActividad':    (p.dte_cod_actividad or '').strip() or None,
-                'descActividad':   (p.dte_desc_actividad or '').strip() or None,
+                'nit':              (p.vat or '').strip() or None,
+                'nrc':              (p.dte_nrc or '').strip() or None,
+                'nombre':           (p.name or '')[:250] or None,
+                'codActividad':     (p.dte_cod_actividad or '').strip() or None,
+                'descActividad':    (p.dte_desc_actividad or '').strip() or None,
                 'nombreComercial': (p.name or '')[:150] or None,
                 'direccion':       _dir(p.dte_departamento, p.dte_municipio, p.dte_complemento),
-                'telefono':        (p.phone or '').strip() or None,
-                'correo':          (p.email or '').strip() or None,
+                'telefono':         (p.phone or '').strip() or None,
+                'correo':           (p.email or '').strip() or None,
             }
         receptor = {
             'tipoDocumento': '36' if p.vat else None,
@@ -192,7 +224,7 @@ class AccountMove(models.Model):
         return receptor
 
     def _build_cuerpo(self, tipo):
-        lineas = self.invoice_line_ids.filtered(lambda line: line.display_type == 'product')
+        lineas = self.invoice_line_ids.filtered(lambda l: l.display_type == 'product')
         cuerpo = []
         for i, linea in enumerate(lineas, start=1):
             codigo = (linea.product_id.default_code or None) if linea.product_id else None
@@ -201,16 +233,16 @@ class AccountMove(models.Model):
                 # Precios IVA-incluido (13%); se derivan 4 decimales para que
                 # precioUni * cantidad - montoDescu == ventaGravada pase validación MH.
                 precio_uni = round(linea.price_unit * 1.13, 4)
-                bruto_iva = precio_uni * linea.quantity
+                bruto_iva  = precio_uni * linea.quantity
                 monto_desc = round(bruto_iva * (linea.discount or 0.0) / 100, 4)
-                gravada = round(bruto_iva - monto_desc, 4)
-                tributos = None
+                gravada    = round(bruto_iva - monto_desc, 4)
+                tributos   = None
             else:
                 precio_uni = linea.price_unit
-                bruto = linea.price_unit * linea.quantity
+                bruto      = linea.price_unit * linea.quantity
                 monto_desc = round(bruto * (linea.discount or 0.0) / 100, 8)
-                gravada = round(linea.price_subtotal, 2)
-                tributos = ['20'] if gravada > 0 else None
+                gravada    = round(linea.price_subtotal, 2)
+                tributos   = ['20'] if gravada > 0 else None
 
             item = {
                 'numItem':         i,
@@ -247,8 +279,9 @@ class AccountMove(models.Model):
         return cuerpo
 
     def _build_resumen(self, tipo, cuerpo):
+        # Los totales se derivan del cuerpo para que coincidan exactamente con
+        # la suma de ventaGravada, evitando errores de redondeo frente al MH.
         total_grav = round(sum(i['ventaGravada'] for i in cuerpo), 2)
-        iva_nc = total_nc = tributos_nc = None
 
         if tipo == '01':
             total_iva_res = round(sum(i.get('ivaItem', 0.0) for i in cuerpo), 2)
@@ -256,11 +289,10 @@ class AccountMove(models.Model):
         if tipo == '03':
             # IVA derivado del totalGravada para satisfacer la validación MH:
             # tributos[20].valor == totalGravada * 0.13
-            iva_ccf = round(total_grav * 0.13, 2)
-            total_pagar = round(total_grav + iva_ccf, 2)
-            tributos_ccf = [
-                {'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
-                 'valor': iva_ccf}] if total_grav > 0 else None
+            iva_ccf       = round(total_grav * 0.13, 2)
+            total_pagar   = round(total_grav + iva_ccf, 2)
+            tributos_ccf  = [{'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
+                               'valor': iva_ccf}] if total_grav > 0 else None
 
         if tipo == '05':
             iva_nc = round(total_grav * 0.13, 2)
@@ -497,7 +529,7 @@ class AccountMove(models.Model):
         return data['body']
 
     def _enviar_dte_mh(self, token, documento_firmado):
-        """Envía el DTE firmado al MH y actualiza el estado según la respuesta."""
+        """Envía el DTE firmado al MH, registra intento y actualiza estado."""
         self.ensure_one()
         company = self.company_id
         url = company.dte_url_recepcion or 'https://apitest.dtes.mh.gob.sv/fesv/recepciondte/'
@@ -509,51 +541,180 @@ class AccountMove(models.Model):
             'tipoDte':   self.tipo_dte,
             'documento': documento_firmado,
         }
+
+        # ── Contabilizar el intento ANTES de llamar al MH ─────────────────
+        nuevo_intento = (self.dte_intentos_envio or 0) + 1
+        self.write({
+            'dte_intentos_envio': nuevo_intento,
+            'dte_ultimo_envio':   fields.Datetime.now(),
+            'estado_dte':         'enviado',
+        })
+
         _logger.info(
-            'DTE ENVÍO → POST %s | tipoDte=%s | codigoGeneracion=%s',
-            url, self.tipo_dte, self.dte_codigo_generacion,
+            'DTE ENVÍO → POST %s | tipoDte=%s | codigoGeneracion=%s | intento=%s',
+            url, self.tipo_dte, self.dte_codigo_generacion, nuevo_intento,
         )
+
         try:
             resp = requests.post(url, json=payload, headers=headers, timeout=30)
         except requests.Timeout:
-            _logger.error('DTE ENVÍO ← timeout')
-            self.estado_dte = 'pendiente'
+            _logger.error('DTE ENVÍO ← timeout (intento %s)', nuevo_intento)
+            self.write({'estado_dte': 'pendiente'})
             raise UserError('El MH no respondió. El DTE quedó en estado Pendiente para reenvío.')
         except Exception as e:
-            _logger.error('DTE ENVÍO ← error inesperado: %s', e)
-            self.estado_dte = 'pendiente'
+            _logger.error('DTE ENVÍO ← error inesperado (intento %s): %s', nuevo_intento, e)
+            self.write({'estado_dte': 'pendiente'})
             raise UserError(f'Error al enviar el DTE al MH: {e}')
 
         _logger.info('DTE ENVÍO ← HTTP %s | body: %s', resp.status_code, resp.text)
+
         if not resp.ok:
-            self.estado_dte = 'pendiente'
+            self.write({'estado_dte': 'pendiente'})
             raise UserError(f'Error de recepción MH (HTTP {resp.status_code}):\n{resp.text}')
 
         data = resp.json()
-        estado = data.get('estado')
-        if estado == 'PROCESADO':
+
+        # ── Guardar respuesta raw del MH ──────────────────────────────────
+        self.dte_respuesta_mh = json.dumps(data, ensure_ascii=False, indent=2)
+
+        # ── CAMBIO CRÍTICO: Se mapea con la propiedad oficial 'status' que maneja el MH ──
+        estado_mh = data.get('status')
+        if estado_mh == 'PROCESADO':
             self.write({
                 'dte_sello_recepcion':     data.get('selloRecibido', ''),
                 'estado_dte':              'aceptado',
                 'dte_fecha_procesamiento': data.get('fhProcesamiento', ''),
             })
-            _logger.info('DTE ENVÍO: %s PROCESADO | sello: %s', self.dte_codigo_generacion, data.get('selloRecibido'))
-        elif estado == 'RECHAZADO':
+            _logger.info(
+                'DTE ENVÍO: %s PROCESADO | sello: %s | intentos: %s',
+                self.dte_codigo_generacion, data.get('selloRecibido'), nuevo_intento,
+            )
+        elif estado_mh == 'RECHAZADO':
             observaciones = data.get('observaciones', [])
             self.write({
                 'estado_dte':              'rechazado',
                 'dte_descripcion_mensaje': data.get('descripcionMsg', ''),
                 'dte_observaciones':       '\n'.join(observaciones) if observaciones else '',
             })
-            _logger.warning('DTE ENVÍO: %s RECHAZADO | msg: %s | obs: %s',
-                            self.dte_codigo_generacion, data.get('descripcionMsg'), observaciones)
+            _logger.warning(
+                'DTE ENVÍO: %s RECHAZADO | msg: %s | obs: %s | intentos: %s',
+                self.dte_codigo_generacion, data.get('descripcionMsg'),
+                observaciones, nuevo_intento,
+            )
         else:
             _logger.warning('DTE ENVÍO: estado desconocido del MH: %s', data)
 
         return data
+    
+    def _enviar_pdf_cliente(self):
+        """
+        Genera el PDF de la factura y lo envía por correo al cliente.
+        Registra el intento en dte.mail.log para trazabilidad completa.
+        Se llama automáticamente cuando el DTE queda en estado 'aceptado'.
+        """
+        self.ensure_one()
+        intento_num = len(self.dte_mail_log_ids) + 1
+        destinatario = (self.partner_id.email or '').strip()
+
+        if not destinatario:
+            _logger.warning(
+                'DTE MAIL: factura %s sin correo de cliente — no se envía PDF',
+                self.name,
+            )
+            self.env['dte.mail.log'].create({
+                'move_id':       self.id,
+                'destinatario':  '(sin correo)',
+                'asunto':        'N/A',
+                'exitoso':       False,
+                'error':         'El cliente no tiene correo electrónico registrado.',
+                'intento_numero': intento_num,
+            })
+            return
+
+        # ── 1. Generar el PDF ──────────────────────────────────────────────
+        try:
+            pdf_content, _ = self.env['ir.actions.report']._render_qweb_pdf(
+                'account.action_account_original_vendor_bill',  # report externo de Odoo
+                res_ids=self.ids,
+            )
+        except Exception:
+            # Fallback: reporte genérico de factura de ventas
+            try:
+                pdf_content, _ = self.env['ir.actions.report']._render_qweb_pdf(
+                    'account.action_report_original_vendor_bill',
+                    res_ids=self.ids,
+                )
+            except Exception:
+                pdf_content, _ = self.env['ir.actions.report']._render_qweb_pdf(
+                    'account.report_invoice',
+                    res_ids=self.ids,
+                )
+
+        # ── 2. Adjuntar el PDF como ir.attachment temporal ─────────────────
+        nombre_pdf = f'Factura_{self.name.replace("/", "_")}.pdf'
+        attachment = self.env['ir.attachment'].create({
+            'name':     nombre_pdf,
+            'type':     'binary',
+            'datas':    base64.b64encode(pdf_content),
+            'res_model': 'account.move',
+            'res_id':    self.id,
+        })
+
+        # ── 3. Construir y enviar el correo ────────────────────────────────
+        asunto = (
+            f'Factura Electrónica {self.name} — {self.company_id.name}'
+        )
+        cuerpo = (f"""
+            <p>Estimado/a <strong>{self.partner_id.name}</strong>,</p>
+            <p>Adjunto encontrará su factura electrónica
+               <strong>{self.name}</strong>
+               emitida por <strong>{self.company_id.name}</strong>,
+               con sello de recepción del Ministerio de Hacienda:
+               <code>{self.dte_sello_recepcion}</code>.</p>
+            <p>Gracias por su preferencia.</p>
+        """)
+
+        mail_values = {
+            'subject':          asunto,
+            'body_html':         cuerpo,
+            'email_to':          destinatario,
+            'email_from':         self.company_id.email or '',
+            'author_id':          self.env.user.partner_id.id,
+            'attachment_ids':     [(4, attachment.id)],
+            'auto_delete':         True,
+        }
+
+        error_msg = None
+        exitoso   = False
+        try:
+            mail = self.env['mail.mail'].sudo().create(mail_values)
+            mail.sudo().send()
+            exitoso = True
+            _logger.info(
+                'DTE MAIL: PDF de %s enviado a %s (intento %s)',
+                self.name, destinatario, intento_num,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            _logger.error(
+                'DTE MAIL: fallo al enviar PDF de %s a %s: %s',
+                self.name, destinatario, e,
+            )
+
+        # ── 4. Registrar el intento en el log ─────────────────────────────
+        self.env['dte.mail.log'].create({
+            'move_id':        self.id,
+            'destinatario':   destinatario,
+            'asunto':         asunto,
+            'cuerpo':         cuerpo,
+            'adjunto_nombre': nombre_pdf,
+            'exitoso':        exitoso,
+            'error':          error_msg,
+            'intento_numero': intento_num,
+        })
 
     def action_enviar_dte(self):
-        """Ejecuta los 3 pasos del envío DTE: autenticación, firma y recepción."""
+        """Ejecuta los 3 pasos del envío DTE y envía el PDF al cliente si es aceptado."""
         self.ensure_one()
         company = self.company_id
 
@@ -591,6 +752,14 @@ class AccountMove(models.Model):
         except UserError:
             self.env.cr.commit()
             raise
+
+        # ── Enviar PDF automáticamente si fue aceptado ────────────────────
+        if self.estado_dte == 'aceptado':
+            try:
+                self._enviar_pdf_cliente()
+            except Exception as e:
+                # El envío de correo no debe revertir el DTE ya aceptado
+                _logger.error('DTE MAIL: error no crítico al enviar PDF: %s', e)
 
         self.env.cr.commit()
 
@@ -633,3 +802,23 @@ class AccountMove(models.Model):
             move.estado_dte = 'pendiente'
 
         return res
+    def action_descargar_json_dte(self):
+        """Genera un adjunto con el JSON DTE y lo descarga."""
+        self.ensure_one()
+        if not self.dte_json:
+            raise UserError('Esta factura no tiene JSON DTE generado.')
+        import base64
+        nombre = 'DTE_' + (self.dte_numero_control or self.name) + '.json'
+        adjunto = self.env['ir.attachment'].create({
+            'name':      nombre,
+            'type':      'binary',
+            'datas':     base64.b64encode(self.dte_json.encode('utf-8')),
+            'mimetype':  'application/json',
+            'res_model': self._name,
+            'res_id':    self.id,
+        })
+        return {
+            'type':   'ir.actions.act_url',
+            'url':    '/web/content/' + str(adjunto.id) + '?download=true',
+            'target': 'self',
+        }

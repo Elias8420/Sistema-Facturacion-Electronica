@@ -124,6 +124,26 @@ PRODUCTS = [
     {"name": "Azitromicina 500mg",  "ref": "FAR-008", "price": 8.99,  "cost": 4.80,  "cat": "Antibióticos"},
     {"name": "Vitamina C 1000mg",   "ref": "FAR-009", "price": 3.25,  "cost": 1.40,  "cat": "Vitaminas"},
     {"name": "Insulina Glargina",   "ref": "FAR-010", "price": 22.50, "cost": 14.00, "cat": "Diabetes"},
+    {"name": "Ciprofloxacina 500mg", "ref": "FAR-011", "price": 7.20,  "cost": 4.10,  "cat": "Antibióticos"},
+    {"name": "Clindamicina 300mg",  "ref": "FAR-012", "price": 9.50,  "cost": 5.30,  "cat": "Antibióticos"},
+    {"name": "Tramadol 50mg",       "ref": "FAR-013", "price": 4.80,  "cost": 2.20,  "cat": "Analgésicos"},
+    {"name": "Diclofenaco 100mg",   "ref": "FAR-014", "price": 2.10,  "cost": 0.95,  "cat": "Analgésicos"},
+    {"name": "Ketorolaco 10mg",     "ref": "FAR-015", "price": 3.40,  "cost": 1.50,  "cat": "Analgésicos"},
+    {"name": "Lansoprazol 30mg",    "ref": "FAR-016", "price": 5.15,  "cost": 2.60,  "cat": "Gastrointestinal"},
+    {"name": "Ranitidina 150mg",    "ref": "FAR-017", "price": 1.50,  "cost": 0.60,  "cat": "Gastrointestinal"},
+    {"name": "Glibenclamida 5mg",   "ref": "FAR-018", "price": 2.80,  "cost": 1.20,  "cat": "Diabetes"},
+    {"name": "Sitagliptina 100mg",  "ref": "FAR-019", "price": 18.50, "cost": 11.20, "cat": "Diabetes"},
+    {"name": "Cetirizina 10mg",     "ref": "FAR-020", "price": 2.25,  "cost": 1.05,  "cat": "Antialérgicos"},
+    {"name": "Fexofenadina 120mg",  "ref": "FAR-021", "price": 6.80,  "cost": 3.40,  "cat": "Antialérgicos"},
+    {"name": "Enalapril 20mg",      "ref": "FAR-022", "price": 3.10,  "cost": 1.30,  "cat": "Cardiovascular"},
+    {"name": "Losartán 50mg",       "ref": "FAR-023", "price": 4.50,  "cost": 1.90,  "cat": "Cardiovascular"},
+    {"name": "Amlodipina 10mg",     "ref": "FAR-024", "price": 3.90,  "cost": 1.70,  "cat": "Cardiovascular"},
+    {"name": "Complejo B Inyectable", "ref": "FAR-025", "price": 4.25, "cost": 2.10,  "cat": "Vitaminas"},
+    {"name": "Vitamina D3 2000 UI",  "ref": "FAR-026", "price": 8.50,  "cost": 4.00,  "cat": "Vitaminas"},
+    {"name": "Salbutamol Aerosol",  "ref": "FAR-027", "price": 6.20,  "cost": 2.90,  "cat": "Soporte Respiratorio"},
+    {"name": "Fluticasona Spray",   "ref": "FAR-028", "price": 14.30, "cost": 7.50,  "cat": "Soporte Respiratorio"},
+    {"name": "Montelukast 10mg",    "ref": "FAR-029", "price": 9.80,  "cost": 4.60,  "cat": "Soporte Respiratorio"},
+    {"name": "Clotrimazol Crema 1%", "ref": "FAR-030", "price": 3.15,  "cost": 1.25,  "cat": "Dermatológicos"},
 ]
 
 PARTNERS = [
@@ -132,12 +152,34 @@ PARTNERS = [
     {"name": "Hospital Nacional Rosales",  "vat": "0614-030303-303-3", "city": "San Salvador"},
     {"name": "Droguería San Miguel",       "vat": "0614-040404-404-4", "city": "San Miguel"},
     {"name": "Clínica Santa Ana",          "vat": "0614-050505-505-5", "city": "Santa Ana"},
+    {"name": "Hospital de Diagnóstico Escalón", "vat": "0614-121275-101-4", "city": "San Salvador"},
+    {"name": "Hospital de la Mujer",         "vat": "0614-180582-102-3", "city": "San Salvador"},
+    {"name": "Hospital Militar Central",     "vat": "0614-050940-001-9", "city": "San Salvador"},
+    {"name": "Hospital Pro-Familia",         "vat": "0614-231160-101-1", "city": "San Salvador"},
+    {"name": "Clínica Médica de Oriente",    "vat": "1217-140288-101-5", "city": "San Miguel"},
+    {"name": "Laboratorios San José",       "vat": "0210-090892-102-2", "city": "Santa Ana"},
+    {"name": "Farmacia San Nicolás",         "vat": "0614-040370-105-2", "city": "Antiguo Cuscatlán"},
+    {"name": "Farmacias Económicas SV",      "vat": "0614-210899-101-8", "city": "Santa Tecla"},
+    {"name": "Farmacia La Vida",             "vat": "0315-121285-101-1", "city": "Sonsonate"},
+    {"name": "Distribuidora Médica Cuscatlán", "vat": "0614-101090-110-6", "city": "Antiguo Cuscatlán"},
+    {"name": "Alcaldía Municipal de San Salvador", "vat": "0614-010140-001-2", "city": "San Salvador"},
+    {"name": "Alcaldía Municipal de Santa Tecla", "vat": "0511-120630-001-5", "city": "Santa Tecla"},
+    {"name": "Alcaldía de Antiguo Cuscatlán", "vat": "0506-010150-002-1", "city": "Antiguo Cuscatlán"},
+    {"name": "Fosalud Central",              "vat": "0614-150205-101-3", "city": "San Salvador"},
+    {"name": "Clínica de Especialidades Médicas", "vat": "0614-080895-102-1", "city": "Soyapango"},
 ]
 
 STOCK = {
     "FAR-001": 150, "FAR-002": 200, "FAR-003": 120, "FAR-004": 90,
     "FAR-005": 180, "FAR-006": 75,  "FAR-007": 300, "FAR-008": 60,
-    "FAR-009": 250, "FAR-010": 40,
+    "FAR-009": 250, "FAR-010": 40,  "FAR-011": 110, "FAR-012": 85,
+    "FAR-013": 95,  "FAR-014": 220, "FAR-015": 130, "FAR-016": 140,
+    "FAR-017": 400, "FAR-018": 160, "FAR-019": 50,  "FAR-020": 210,
+    "FAR-021": 90,  "FAR-022": 175, "FAR-023": 190, "FAR-024": 230,
+    "FAR-025": 80,  "FAR-026": 140, "FAR-027": 125, "FAR-028": 65,
+    "FAR-029": 110, "FAR-030": 150, "FAR-031": 135, "FAR-032": 95,
+    "FAR-033": 35,  "FAR-034": 25,  "FAR-035": 115, "FAR-036": 500,
+    "FAR-037": 85,  "FAR-038": 120, "FAR-039": 70,  "FAR-040": 330
 }
 
 
