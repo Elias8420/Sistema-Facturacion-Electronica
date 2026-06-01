@@ -15,7 +15,7 @@ config/odoo.conf
 .vscode/
 .idea/
 *.swp
-.claude/
+*.claude/
 *.swo
 
 # OS

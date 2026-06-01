@@ -142,23 +142,26 @@ class AccountMove(models.Model):
 
     def _build_emisor(self, tipo):
         c = self.company_id
+        direccion = {
+            'departamento': c.dte_departamento or '',
+            'municipio':    c.dte_municipio or '',
+            'complemento':  (c.street or '')[:200],
+        }
+        if tipo == '05':
+            direccion['distrito'] = c.dte_distrito or ''
         emisor = {
-            'nit':                 (c.dte_nit or c.vat or '').strip(),
-            'nrc':                 (c.dte_nrc or '').strip(),
-            'nombre':              (c.name or '')[:250],
-            'codActividad':        c.dte_cod_actividad or '',
-            'descActividad':       c.dte_desc_actividad or '',
-            'nombreComercial':     (c.dte_nombre_comercial or c.name or '')[:150] or None,
-            'tipoEstablecimiento': c.dte_tipo_establecimiento or '01',
-            'direccion': {
-                'departamento': c.dte_departamento or '',
-                'municipio':    c.dte_municipio or '',
-                'complemento':  (c.street or '')[:200],
-            },
-            'telefono': (c.phone or '')[:30],
-            'correo':   (c.email or '')[:100],
+            'nit':             (c.dte_nit or c.vat or '').strip(),
+            'nrc':             (c.dte_nrc or '').strip(),
+            'nombre':          (c.name or '')[:250],
+            'codActividad':    c.dte_cod_actividad or '',
+            'descActividad':   c.dte_desc_actividad or '',
+            'nombreComercial': (c.dte_nombre_comercial or c.name or '')[:150] or None,
+            'direccion':       direccion,
+            'telefono':        (c.phone or '')[:30],
+            'correo':          (c.email or '')[:100],
         }
         if tipo in ('01', '03'):
+            emisor['tipoEstablecimiento'] = c.dte_tipo_establecimiento or '01'
             emisor.update({
                 'codEstableMH':    (c.dte_establecimiento or '').strip() or None,
                 'codEstable':      None,
@@ -170,13 +173,16 @@ class AccountMove(models.Model):
     def _build_receptor(self, tipo):
         p = self.partner_id
 
-        def _dir(depto, muni, complemento):
+        def _dir(depto, muni, complemento, distrito=None):
             depto       = (depto or '').strip()
             muni        = (muni or '').strip()
             complemento = (complemento or '').strip()[:200]
             if not (depto and muni and complemento):
                 return None
-            return {'departamento': depto, 'municipio': muni, 'complemento': complemento}
+            d = {'departamento': depto, 'municipio': muni, 'complemento': complemento}
+            if distrito is not None:
+                d['distrito'] = distrito
+            return d
 
         if tipo == '03':
             return {
@@ -203,6 +209,18 @@ class AccountMove(models.Model):
         }
         if tipo == '05':
             receptor['nombreComercial'] = (p.name or '')[:150] or None
+            receptor['direccion'] = _dir(
+                p.dte_departamento, p.dte_municipio, p.dte_complemento,
+                distrito=(p.dte_distrito or '').strip(),
+            )
+            # NC: omit activity fields for consumer-final receptors (no business code)
+            cod_act = (p.dte_cod_actividad or '').strip()
+            if cod_act:
+                receptor['codActividad']  = cod_act
+                receptor['descActividad'] = (p.dte_desc_actividad or '').strip() or None
+            else:
+                del receptor['codActividad']
+                del receptor['descActividad']
         return receptor
 
     def _build_cuerpo(self, tipo):
@@ -247,15 +265,15 @@ class AccountMove(models.Model):
 
             if tipo == '01':
                 item['ivaItem'] = round(gravada * 13 / 113, 4)
-            elif tipo == '05':
+            if tipo == '05':
                 del item['psv']
+                orig = self.reversed_entry_id
                 item['numeroDocumento'] = (
-                    self.reversed_entry_id.dte_codigo_generacion
-                    or self.reversed_entry_id.name or ''
-                ) if self.reversed_entry_id else ''
+                    orig.dte_codigo_generacion or orig.name or None
+                ) if orig else None
                 item['ivaPerci'] = 0.0
-                item['totalIva'] = round(gravada * 0.13, 8)
-                item['ivaRete']  = 0.0
+                item['totalIva'] = round(precio_uni * linea.quantity * 0.13, 4)
+                item['ivaRete'] = 0.0
 
             cuerpo.append(item)
         return cuerpo
@@ -277,10 +295,7 @@ class AccountMove(models.Model):
                                'valor': iva_ccf}] if total_grav > 0 else None
 
         if tipo == '05':
-            iva_nc      = round(total_grav * 0.13, 2)
-            total_nc    = round(total_grav + iva_nc, 2)
-            tributos_nc = [{'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
-                             'valor': iva_nc}] if total_grav > 0 else None
+            iva_nc = round(total_grav * 0.13, 2)
 
         if tipo == '01':
             return {
@@ -339,14 +354,14 @@ class AccountMove(models.Model):
             'totalGravada':        total_grav,
             'subTotalVentas':      total_grav,
             'totalDescu':          0.0,
-            'tributos':            tributos_nc,
-            'montoTotalOperacion': total_nc,
+            'tributos':            [{'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%', 'valor': iva_nc}] if total_grav > 0 else None,
+            'montoTotalOperacion': round(total_grav + iva_nc, 2),
             'ivaPerci':            0.0,
             'totalIva':            iva_nc,
             'ivaRete':             0.0,
             'totalNoGravado':      0.0,
-            'totalPagar':          total_nc,
-            'totalLetras':         None,
+            'totalPagar':          round(total_grav + iva_nc, 2),
+            'totalLetras':         self._numero_a_letras(round(total_grav + iva_nc, 2)),
             'condicionOperacion':  1,
             'observaciones':       None,
             'codigoRetencionMH':   None,
@@ -368,6 +383,12 @@ class AccountMove(models.Model):
         self.ensure_one()
         tipo = self.tipo_dte or '01'
 
+        if tipo == '05' and not self.reversed_entry_id:
+            raise UserError(
+                'La Nota de Crédito debe estar vinculada a una factura original. '
+                'Use el botón "Agregar Nota de Crédito" desde la factura que desea reversar.'
+            )
+
         cuerpo = self._build_cuerpo(tipo)
         dte = {
             'identificacion':       self._build_identificacion(tipo),
@@ -377,13 +398,14 @@ class AccountMove(models.Model):
             'ventaTercero':         None,
             'cuerpoDocumento':      cuerpo,
             'resumen':              self._build_resumen(tipo, cuerpo),
-            'extension': {
+            'apendice':             None,
+        }
+        if tipo in ('01', '03'):
+            dte['extension'] = {
                 'nombEntrega': None, 'docuEntrega': None,
                 'nombRecibe':  None, 'docuRecibe':  None,
                 'observaciones': None, 'placaVehiculo': None,
-            } if tipo == '01' else None,
-            'apendice': None,
-        }
+            }
         if tipo in ('01', '03'):
             dte['otrosDocumentos'] = None
         return json.dumps(dte, ensure_ascii=False, indent=2)
@@ -740,6 +762,28 @@ class AccountMove(models.Model):
                 _logger.error('DTE MAIL: error no crítico al enviar PDF: %s', e)
 
         self.env.cr.commit()
+
+    # ── Regenerar JSON DTE ────────────────────────────────────────────────────
+
+    def action_regenerar_dte_json(self):
+        self.ensure_one()
+        if self.estado_dte not in ('pendiente', 'rechazado'):
+            raise UserError('Solo se puede regenerar el JSON cuando el DTE está en estado Pendiente o Rechazado.')
+
+        nuevo_json = self._serializar_dte()
+        self.write({'dte_json': nuevo_json})
+        _logger.info('DTE: JSON regenerado para %s (%s)', self.dte_codigo_generacion, self.tipo_dte)
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Éxito',
+                'message': 'JSON DTE regenerado correctamente',
+                'type': 'success',
+                'sticky': False,
+            },
+        }
 
     # ── Override action_post ───────────────────────────────────────────────────
 
