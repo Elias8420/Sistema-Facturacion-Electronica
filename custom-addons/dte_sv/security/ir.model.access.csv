@@ -1,2 +1,3 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_account_move_dte_user,account.move.dte.user,account.model_account_move,base.group_user,1,1,1,1
+access_dte_mail_log_user,dte.mail.log.user,model_dte_mail_log,base.group_user,1,0,1,0

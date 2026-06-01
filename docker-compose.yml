@@ -44,6 +44,21 @@ services:
     networks:
       - odoo_net
 
+  seeder:
+    image: python:3.11-slim
+    volumes:
+      - ./seed_data.py:/seed_data.py
+      - .env:/.env
+    environment:
+      - ODOO_URL=http://odoo:8069
+      - ODOO_DB=farmacia_db
+    networks:
+      - odoo_net
+    depends_on:
+      odoo:
+        condition: service_started
+    command: ["python3", "/seed_data.py"]
+    
   firmador:
     image: registry.fopinet.com/firmador-mh:latest
     container_name: svfe-api-firmador
