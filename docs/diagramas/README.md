@@ -75,7 +75,6 @@ Diagramas visuales del sistema de facturación electrónica basados en los casos
 
 - [Arquitectura Inicial](../arquitectura-inicial.md) — Stack tecnológico
 - [Documentación Técnica](../documentacion-tecnica.md) — Implementación
-- [Guía de Despliegue](../despliegue.md) — Instalación
 
 ---
 

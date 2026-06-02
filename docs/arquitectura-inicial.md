@@ -237,5 +237,4 @@ Sistema **Odoo 17 dockerizado** especializado en facturación electrónica para 
 ## Próximos Pasos
 
 1. [Ver Documentación Técnica](./documentacion-tecnica.md)
-2. [Ver Guía de Despliegue](./despliegue.md)
-3. [Ver Diagramas](./diagramas/)
+2. [Ver Diagramas](./diagramas/)
