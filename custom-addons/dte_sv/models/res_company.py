@@ -38,6 +38,10 @@ class ResCompany(models.Model):
         default='01',
         help='Tipo de establecimiento según catálogo del MH. Ej: 01=Casa Matriz.',
     )
+    dte_nom_establecimiento = fields.Char(
+        string='Nombre del Establecimiento',
+        help='Nombre de la sucursal/establecimiento. Requerido en eventos de invalidación MH.',
+    )
     dte_departamento = fields.Char(
         string='Departamento',
         help='Código de departamento según catálogo del MH. Ej: 06=San Salvador.',
@@ -79,6 +83,11 @@ class ResCompany(models.Model):
         string='URL Recepción MH',
         default='https://apitest.dtes.mh.gob.sv/fesv/recepciondte/',
         help='Endpoint de recepción de DTEs del Ministerio de Hacienda.',
+    )
+    dte_url_anulacion = fields.Char(
+        string='URL Anulación MH',
+        default='https://apitest.dtes.mh.gob.sv/fesv/anulardte/',
+        help='Endpoint de invalidación/anulación de DTEs del Ministerio de Hacienda.',
     )
 
     # ── Token (gestionado automáticamente) ────────────────────────────────────

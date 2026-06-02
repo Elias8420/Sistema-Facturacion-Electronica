@@ -2,9 +2,9 @@ from odoo import models, fields
 
 
 class DteMailLog(models.Model):
-    _name        = 'dte.mail.log'
+    _name = 'dte.mail.log'
     _description = 'Historial de correos DTE'
-    _order       = 'fecha_envio desc'
+    _order = 'fecha_envio desc'
 
     # ── Relación con la factura ──────────────────────────────────────────────
     move_id = fields.Many2one(

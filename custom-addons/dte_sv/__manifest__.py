@@ -1,6 +1,6 @@
 {
     'name': 'Facturación Electrónica SV',
-    'version': '17.0.1.0.0',
+    'version': '17.0.1.1.0',
     'category': 'Accounting',
     'summary': 'Documentos Tributarios Electrónicos (DTE) para El Salvador',
     'description': """
@@ -21,6 +21,8 @@
         'data/dte_sequence.xml',
         'views/res_company_views.xml',
         'views/res_partner_views.xml',
+        'views/dte_invalidacion_views.xml',
+        'views/dte_invalidacion_wizard_views.xml',
         'views/account_move_views.xml',
         'reports/report_invoice_dte.xml',
     ],

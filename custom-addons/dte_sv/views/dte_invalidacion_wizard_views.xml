@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ══ Wizard de Invalidación DTE ══════════════════════════════════════════ -->
+
+    <record id="view_dte_invalidacion_wizard_form" model="ir.ui.view">
+        <field name="name">dte.invalidacion.wizard.form</field>
+        <field name="model">dte.invalidacion.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Invalidar DTE">
+
+                <!-- Alerta de advertencia -->
+                <div class="alert alert-warning" role="alert">
+                    <strong>Atención:</strong> Esta operación es irreversible.
+                    El DTE será anulado ante el Ministerio de Hacienda de El Salvador.
+                </div>
+
+                <!-- Datos del DTE a invalidar (solo lectura) -->
+                <group string="DTE a Invalidar">
+                    <group>
+                        <field name="move_id" invisible="1"/>
+                        <field name="tipo_dte" readonly="1"/>
+                        <field name="numero_control" readonly="1"/>
+                    </group>
+                    <group>
+                        <field name="codigo_generacion_dte" readonly="1" string="Código de Generación"/>
+                    </group>
+                </group>
+
+                <!-- Motivo de invalidación -->
+                <group string="Motivo de Invalidación">
+                    <field name="tipo_anulacion" required="1"/>
+                    <field name="motivo_anulacion"
+                           required="tipo_anulacion == '3'"
+                           invisible="tipo_anulacion != '3'"
+                           placeholder="Describa el motivo de la invalidación..."/>
+                </group>
+
+                <!-- Datos del responsable -->
+                <group string="Responsable del Evento">
+                    <group>
+                        <field name="nombre_responsable" required="1"
+                               placeholder="Nombre completo del responsable"/>
+                        <field name="tip_doc_responsable" required="1"/>
+                    </group>
+                    <group>
+                        <field name="num_doc_responsable" required="1"
+                               placeholder="Número de documento"/>
+                    </group>
+                </group>
+
+                <!-- Datos del solicitante -->
+                <group string="Solicitante del Evento">
+                    <group>
+                        <field name="nombre_solicita" required="1"
+                               placeholder="Nombre completo del solicitante"/>
+                        <field name="tip_doc_solicita" required="1"/>
+                    </group>
+                    <group>
+                        <field name="num_doc_solicita" required="1"
+                               placeholder="Número de documento"/>
+                    </group>
+                </group>
+
+                <!-- Documento sustituto -->
+                <group string="Documento Sustituto (opcional)">
+                    <field name="tiene_sustituto"/>
+                    <field name="codigo_generacion_r"
+                           invisible="not tiene_sustituto"
+                           placeholder="UUID del documento sustituto (XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX)"/>
+                </group>
+
+                <!-- Botones de acción -->
+                <footer>
+                    <button name="action_confirmar_invalidacion"
+                            string="Confirmar Invalidación"
+                            type="object"
+                            class="btn-danger"/>
+                    <button string="Cancelar"
+                            class="btn-secondary"
+                            special="cancel"/>
+                </footer>
+
+            </form>
+        </field>
+    </record>
+
+</odoo>
