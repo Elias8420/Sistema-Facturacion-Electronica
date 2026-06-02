@@ -4,6 +4,7 @@ import logging
 import os
 import base64
 from datetime import timedelta
+from decimal import Decimal, ROUND_HALF_UP
 
 import requests
 
@@ -27,6 +28,12 @@ _logger = logging.getLogger(__name__)
 _DTE_VERSION = {'01': 1, '03': 3, '05': 4}
 _SCHEMA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static', 'schemas')
 _SCHEMA_FILE = {'01': 'fe-f-v2.json', '03': 'fe-ccf-v4.json', '05': 'fe-nc-v4.json'}
+
+
+def _round2(val):
+    """Round to 2 decimal places using ROUND_HALF_UP to match Odoo's display totals.
+    Uses str() conversion to avoid float-representation drift (e.g. 10.735 → 10.74)."""
+    return float(Decimal(str(val)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
 
 class AccountMove(models.Model):
@@ -300,7 +307,7 @@ class AccountMove(models.Model):
     def _build_resumen(self, tipo, cuerpo):
         # Los totales se derivan del cuerpo para que coincidan exactamente con
         # la suma de ventaGravada, evitando errores de redondeo frente al MH.
-        total_grav = round(sum(i['ventaGravada'] for i in cuerpo), 2)
+        total_grav = _round2(sum(i['ventaGravada'] for i in cuerpo))
 
         total_iva_res = 0.0
         iva_nc = 0.0
@@ -309,20 +316,20 @@ class AccountMove(models.Model):
         tributos_ccf = None
 
         if tipo == '01':
-            total_iva_res = round(sum(i.get('ivaItem', 0.0) for i in cuerpo), 2)
+            total_iva_res = _round2(sum(i.get('ivaItem', 0.0) for i in cuerpo))
 
         if tipo == '03':
             # IVA derivado del totalGravada para satisfacer la validación MH:
             # tributos[20].valor == totalGravada * 0.13
-            iva_ccf = round(total_grav * 0.13, 2)
-            total_pagar = round(total_grav + iva_ccf, 2)
+            iva_ccf = _round2(total_grav * 0.13)
+            total_pagar = _round2(total_grav + iva_ccf)
             tributos_ccf = (
                 [{'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%', 'valor': iva_ccf}]
                 if total_grav > 0 else None
             )
 
         if tipo == '05':
-            iva_nc = round(total_grav * 0.13, 2)
+            iva_nc = _round2(total_grav * 0.13)
 
         if tipo == '01':
             return {
@@ -385,13 +392,13 @@ class AccountMove(models.Model):
                 [{'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%', 'valor': iva_nc}]
                 if total_grav > 0 else None
             ),
-            'montoTotalOperacion': round(total_grav + iva_nc, 2),
+            'montoTotalOperacion': _round2(total_grav + iva_nc),
             'ivaPerci':            0.0,
             'totalIva':            0.0,
             'ivaRete':             0.0,
             'totalNoGravado':      0.0,
-            'totalPagar':          round(total_grav + iva_nc, 2),
-            'totalLetras':         self._numero_a_letras(round(total_grav + iva_nc, 2)),
+            'totalPagar':          _round2(total_grav + iva_nc),
+            'totalLetras':         self._numero_a_letras(_round2(total_grav + iva_nc)),
             'condicionOperacion':  1,
             'observaciones':       None,
             'codigoRetencionMH':   None,
@@ -751,7 +758,7 @@ class AccountMove(models.Model):
 
         return data
 
-    def _enviar_pdf_cliente(self):
+    def _enviar_pdf_cliente(self):  # pylint: disable=too-many-locals
         """
         Genera el PDF de la factura y lo envía por correo al cliente.
         Registra el intento en dte.mail.log para trazabilidad completa.
@@ -795,14 +802,27 @@ class AccountMove(models.Model):
                     res_ids=self.ids,
                 )
 
-        # ── 2. Adjuntar el PDF como ir.attachment temporal ─────────────────
-        nombre_pdf = f'Factura_{self.name.replace("/", "_")}.pdf'
-        attachment = self.env['ir.attachment'].create({
-            'name':     nombre_pdf,
-            'type':     'binary',
-            'datas':    base64.b64encode(pdf_content),
+        # ── 2. Crear adjuntos (PDF + JSON DTE) ────────────────────────────
+        cod_gen = self.dte_codigo_generacion or self.name.replace('/', '_')
+        nombre_pdf = f'{cod_gen}.pdf'
+        nombre_json = f'{cod_gen}.json'
+
+        attachment_pdf = self.env['ir.attachment'].create({
+            'name': nombre_pdf,
+            'type': 'binary',
+            'datas': base64.b64encode(pdf_content),
+            'mimetype': 'application/pdf',
             'res_model': 'account.move',
-            'res_id':    self.id,
+            'res_id': self.id,
+        })
+
+        attachment_json = self.env['ir.attachment'].create({
+            'name': nombre_json,
+            'type': 'binary',
+            'datas': base64.b64encode((self.dte_json or '{}').encode('utf-8')),
+            'mimetype': 'application/json',
+            'res_model': 'account.move',
+            'res_id': self.id,
         })
 
         # ── 3. Construir y enviar el correo ────────────────────────────────
@@ -823,7 +843,7 @@ class AccountMove(models.Model):
             'email_to': destinatario,
             'email_from': self.company_id.email or '',
             'author_id': self.env.user.partner_id.id,
-            'attachment_ids': [(4, attachment.id)],
+            'attachment_ids': [(4, attachment_pdf.id), (4, attachment_json.id)],
             'auto_delete': True,
         }
 
@@ -850,7 +870,7 @@ class AccountMove(models.Model):
             'destinatario':   destinatario,
             'asunto':         asunto,
             'cuerpo':         cuerpo,
-            'adjunto_nombre': nombre_pdf,
+            'adjunto_nombre': f'{nombre_pdf}, {nombre_json}',
             'exitoso':        exitoso,
             'error':          error_msg,
             'intento_numero': intento_num,
