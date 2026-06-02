@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ══ Vista formulario del evento de invalidación ═════════════════════════ -->
+
+    <record id="view_dte_invalidacion_form" model="ir.ui.view">
+        <field name="name">dte.invalidacion.form</field>
+        <field name="model">dte.invalidacion</field>
+        <field name="arch" type="xml">
+            <form string="Evento de Invalidación DTE" create="false">
+
+                <header>
+                    <button name="action_invalidar_dte"
+                            string="Reintentar Envío"
+                            type="object"
+                            class="btn-primary"
+                            invisible="estado not in ('pendiente', 'error', 'rechazado')"/>
+                    <field name="estado"
+                           widget="statusbar"
+                           statusbar_visible="pendiente,enviado,procesado"/>
+                </header>
+
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="codigo_generacion" readonly="1"/>
+                        </h1>
+                    </div>
+
+                    <!-- Información del DTE invalidado -->
+                    <group string="DTE Invalidado">
+                        <group>
+                            <field name="move_id" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <!-- Resultado de la invalidación -->
+                    <group string="Resultado de la Invalidación"
+                           invisible="estado == 'pendiente'">
+                        <group>
+                            <field name="sello_recibido"     readonly="1"/>
+                            <field name="fecha_invalidacion" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="descripcion_mensaje" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <!-- Observaciones del MH -->
+                    <group string="Observaciones MH"
+                           invisible="not observaciones">
+                        <field name="observaciones" readonly="1" nolabel="1"/>
+                    </group>
+
+                    <!-- Datos del motivo -->
+                    <group string="Motivo de Invalidación">
+                        <group>
+                            <field name="tipo_anulacion"/>
+                            <field name="motivo_anulacion"
+                                   invisible="not motivo_anulacion"/>
+                        </group>
+                        <group>
+                            <field name="codigo_generacion_r"
+                                   invisible="not codigo_generacion_r"/>
+                        </group>
+                    </group>
+
+                    <!-- Datos del responsable -->
+                    <group string="Responsable del Evento">
+                        <group>
+                            <field name="nombre_responsable"/>
+                            <field name="tip_doc_responsable"/>
+                            <field name="num_doc_responsable"/>
+                        </group>
+                        <group>
+                            <field name="nombre_solicita"/>
+                            <field name="tip_doc_solicita"/>
+                            <field name="num_doc_solicita"/>
+                        </group>
+                    </group>
+
+                    <!-- JSON generado -->
+                    <group string="JSON del Evento"
+                           invisible="not json_evento">
+                        <field name="json_evento"
+                               readonly="1"
+                               nolabel="1"
+                               style="min-height:250px;font-family:monospace;font-size:12px;white-space:pre;"/>
+                    </group>
+
+
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ══ Vista lista de invalidaciones ════════════════════════════════════════ -->
+
+    <record id="view_dte_invalidacion_tree" model="ir.ui.view">
+        <field name="name">dte.invalidacion.tree</field>
+        <field name="model">dte.invalidacion</field>
+        <field name="arch" type="xml">
+            <tree string="Invalidaciones DTE"
+                  decoration-success="estado == 'procesado'"
+                  decoration-danger="estado in ('rechazado', 'error')"
+                  decoration-warning="estado in ('pendiente', 'enviado')">
+                <field name="codigo_generacion"/>
+                <field name="move_id"/>
+                <field name="tipo_anulacion"/>
+                <field name="estado" widget="badge"/>
+                <field name="sello_recibido"/>
+                <field name="fecha_invalidacion"/>
+                <field name="descripcion_mensaje" optional="show"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ══ Acción de ventana ════════════════════════════════════════════════════ -->
+
+    <record id="action_dte_invalidacion" model="ir.actions.act_window">
+        <field name="name">Invalidaciones DTE</field>
+        <field name="res_model">dte.invalidacion</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No hay eventos de invalidación registrados.
+            </p>
+            <p>
+                Para invalidar un DTE, abra la factura correspondiente y presione
+                el botón <strong>"Invalidar DTE"</strong>.
+            </p>
+        </field>
+    </record>
+
+    <!-- ══ Menú (bajo Facturación) ══════════════════════════════════════════════ -->
+
+    <menuitem id="menu_dte_invalidaciones"
+              name="Invalidaciones DTE"
+              parent="account.menu_finance"
+              action="action_dte_invalidacion"
+              sequence="99"/>
+
+</odoo>
