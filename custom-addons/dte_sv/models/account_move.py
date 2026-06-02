@@ -2,8 +2,17 @@ import uuid
 import json
 import logging
 import os
+import base64
+from datetime import timedelta
+from decimal import Decimal, ROUND_HALF_UP
 
 import requests
+
+try:
+    from dateutil.relativedelta import relativedelta
+    _HAS_RELATIVEDELTA = True
+except ImportError:
+    _HAS_RELATIVEDELTA = False
 
 try:
     import jsonschema
@@ -11,7 +20,7 @@ try:
 except ImportError:
     _HAS_JSONSCHEMA = False
 
-from odoo import models, fields
+from odoo import models, fields  # pylint: disable=too-many-lines
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
@@ -19,6 +28,12 @@ _logger = logging.getLogger(__name__)
 _DTE_VERSION = {'01': 1, '03': 3, '05': 4}
 _SCHEMA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static', 'schemas')
 _SCHEMA_FILE = {'01': 'fe-f-v2.json', '03': 'fe-ccf-v4.json', '05': 'fe-nc-v4.json'}
+
+
+def _round2(val):
+    """Round to 2 decimal places using ROUND_HALF_UP to match Odoo's display totals.
+    Uses str() conversion to avoid float-representation drift (e.g. 10.735 → 10.74)."""
+    return float(Decimal(str(val)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
 
 class AccountMove(models.Model):
@@ -52,18 +67,61 @@ class AccountMove(models.Model):
     )
     estado_dte = fields.Selection(
         selection=[
-            ('borrador',  'Borrador'),
-            ('enviado',   'Enviado'),
-            ('aceptado',  'Aceptado'),
-            ('rechazado', 'Rechazado'),
-            ('pendiente', 'Pendiente de Envío'),
+            ('borrador',            'Borrador'),
+            ('pendiente',           'Pendiente de Envío'),
+            ('enviado',             'Enviado'),
+            ('aceptado',            'Aceptado'),
+            ('rechazado',           'Rechazado'),
+            ('invalidado',          'Invalidado'),
+            ('error_invalidacion',  'Error en Invalidación'),
+            ('fuera_de_plazo',      'Fuera de Plazo'),
         ],
         string='Estado DTE', default='borrador', copy=False,
+    )
+
+    # ── Historial de invalidaciones ───────────────────────────────────────────
+    invalidacion_ids = fields.One2many(
+        'dte.invalidacion',
+        'move_id',
+        string='Eventos de Invalidación',
+        readonly=True,
+        copy=False,
     )
     dte_observaciones = fields.Text(string='Observaciones MH', readonly=True, copy=False)
     dte_fecha_procesamiento = fields.Char(string='Fecha Procesamiento MH', readonly=True, copy=False)
     dte_codigo_mensaje = fields.Char(string='Código Mensaje MH', readonly=True, copy=False)
     dte_descripcion_mensaje = fields.Char(string='Descripción Mensaje MH', readonly=True, copy=False)
+
+    # ── Campos de trazabilidad ─────────────────────────────────────────────────
+
+    dte_intentos_envio = fields.Integer(
+        string='Intentos de Envío MH',
+        default=0,
+        readonly=True,
+        copy=False,
+        help='Número de veces que se intentó enviar el DTE al Ministerio de Hacienda.',
+    )
+    dte_ultimo_envio = fields.Datetime(
+        string='Último Envío MH',
+        readonly=True,
+        copy=False,
+        help='Fecha y hora del último intento de envío al MH.',
+    )
+    dte_respuesta_mh = fields.Text(
+        string='Respuesta MH (raw)',
+        readonly=True,
+        copy=False,
+        help='JSON completo devuelto por el Ministerio de Hacienda en el último envío.',
+    )
+
+    # ── Historial de correos ────────────────────────────────────────────────
+    dte_mail_log_ids = fields.One2many(
+        'dte.mail.log',
+        'move_id',
+        string='Historial de correos DTE',
+        readonly=True,
+        copy=False,
+    )
 
     # ── Helpers de generación ──────────────────────────────────────────────────
 
@@ -110,23 +168,26 @@ class AccountMove(models.Model):
 
     def _build_emisor(self, tipo):
         c = self.company_id
+        direccion = {
+            'departamento': c.dte_departamento or '',
+            'municipio':    c.dte_municipio or '',
+            'complemento':  (c.street or '')[:200],
+        }
+        if tipo == '05':
+            direccion['distrito'] = c.dte_distrito or ''
         emisor = {
-            'nit':                 (c.dte_nit or c.vat or '').strip(),
-            'nrc':                 (c.dte_nrc or '').strip(),
-            'nombre':              (c.name or '')[:250],
-            'codActividad':        c.dte_cod_actividad or '',
-            'descActividad':       c.dte_desc_actividad or '',
-            'nombreComercial':     (c.dte_nombre_comercial or c.name or '')[:150] or None,
-            'tipoEstablecimiento': c.dte_tipo_establecimiento or '01',
-            'direccion': {
-                'departamento': c.dte_departamento or '',
-                'municipio':    c.dte_municipio or '',
-                'complemento':  (c.street or '')[:200],
-            },
-            'telefono': (c.phone or '')[:30],
-            'correo':   (c.email or '')[:100],
+            'nit':             (c.dte_nit or c.vat or '').strip(),
+            'nrc':             (c.dte_nrc or '').strip(),
+            'nombre':          (c.name or '')[:250],
+            'codActividad':    c.dte_cod_actividad or '',
+            'descActividad':   c.dte_desc_actividad or '',
+            'nombreComercial': (c.dte_nombre_comercial or c.name or '')[:150] or None,
+            'direccion':       direccion,
+            'telefono':        (c.phone or '')[:30],
+            'correo':          (c.email or '')[:100],
         }
         if tipo in ('01', '03'):
+            emisor['tipoEstablecimiento'] = c.dte_tipo_establecimiento or '01'
             emisor.update({
                 'codEstableMH':    (c.dte_establecimiento or '').strip() or None,
                 'codEstable':      None,
@@ -138,25 +199,28 @@ class AccountMove(models.Model):
     def _build_receptor(self, tipo):
         p = self.partner_id
 
-        def _dir(depto, muni, complemento):
+        def _dir(depto, muni, complemento, distrito=None):
             depto = (depto or '').strip()
             muni = (muni or '').strip()
             complemento = (complemento or '').strip()[:200]
             if not (depto and muni and complemento):
                 return None
-            return {'departamento': depto, 'municipio': muni, 'complemento': complemento}
+            d = {'departamento': depto, 'municipio': muni, 'complemento': complemento}
+            if distrito is not None:
+                d['distrito'] = distrito
+            return d
 
         if tipo == '03':
             return {
-                'nit':             (p.vat or '').strip() or None,
-                'nrc':             (p.dte_nrc or '').strip() or None,
-                'nombre':          (p.name or '')[:250] or None,
-                'codActividad':    (p.dte_cod_actividad or '').strip() or None,
-                'descActividad':   (p.dte_desc_actividad or '').strip() or None,
+                'nit':              (p.vat or '').strip() or None,
+                'nrc':              (p.dte_nrc or '').strip() or None,
+                'nombre':           (p.name or '')[:250] or None,
+                'codActividad':     (p.dte_cod_actividad or '').strip() or None,
+                'descActividad':    (p.dte_desc_actividad or '').strip() or None,
                 'nombreComercial': (p.name or '')[:150] or None,
                 'direccion':       _dir(p.dte_departamento, p.dte_municipio, p.dte_complemento),
-                'telefono':        (p.phone or '').strip() or None,
-                'correo':          (p.email or '').strip() or None,
+                'telefono':         (p.phone or '').strip() or None,
+                'correo':           (p.email or '').strip() or None,
             }
         receptor = {
             'tipoDocumento': '36' if p.vat else None,
@@ -171,10 +235,22 @@ class AccountMove(models.Model):
         }
         if tipo == '05':
             receptor['nombreComercial'] = (p.name or '')[:150] or None
+            receptor['direccion'] = _dir(
+                p.dte_departamento, p.dte_municipio, p.dte_complemento,
+                distrito=(p.dte_distrito or '').strip(),
+            )
+            # NC: omit activity fields for consumer-final receptors (no business code)
+            cod_act = (p.dte_cod_actividad or '').strip()
+            if cod_act:
+                receptor['codActividad'] = cod_act
+                receptor['descActividad'] = (p.dte_desc_actividad or '').strip() or None
+            else:
+                del receptor['codActividad']
+                del receptor['descActividad']
         return receptor
 
     def _build_cuerpo(self, tipo):
-        lineas = self.invoice_line_ids.filtered(lambda line: line.display_type == 'product')
+        lineas = self.invoice_line_ids.filtered(lambda ln: ln.display_type == 'product')
         cuerpo = []
         for i, linea in enumerate(lineas, start=1):
             codigo = (linea.product_id.default_code or None) if linea.product_id else None
@@ -215,41 +291,45 @@ class AccountMove(models.Model):
 
             if tipo == '01':
                 item['ivaItem'] = round(gravada * 13 / 113, 4)
-            elif tipo == '05':
+            if tipo == '05':
                 del item['psv']
+                orig = self.reversed_entry_id
                 item['numeroDocumento'] = (
-                    self.reversed_entry_id.dte_codigo_generacion
-                    or self.reversed_entry_id.name or ''
-                ) if self.reversed_entry_id else ''
+                    orig.dte_codigo_generacion or orig.name or None
+                ) if orig else None
                 item['ivaPerci'] = 0.0
-                item['totalIva'] = round(gravada * 0.13, 8)
+                item['totalIva'] = round(precio_uni * linea.quantity * 0.0, 2)
                 item['ivaRete'] = 0.0
 
             cuerpo.append(item)
         return cuerpo
 
     def _build_resumen(self, tipo, cuerpo):
-        total_grav = round(sum(i['ventaGravada'] for i in cuerpo), 2)
-        iva_nc = total_nc = tributos_nc = None
+        # Los totales se derivan del cuerpo para que coincidan exactamente con
+        # la suma de ventaGravada, evitando errores de redondeo frente al MH.
+        total_grav = _round2(sum(i['ventaGravada'] for i in cuerpo))
+
+        total_iva_res = 0.0
+        iva_nc = 0.0
+        iva_ccf = 0.0
+        total_pagar = 0.0
+        tributos_ccf = None
 
         if tipo == '01':
-            total_iva_res = round(sum(i.get('ivaItem', 0.0) for i in cuerpo), 2)
+            total_iva_res = _round2(sum(i.get('ivaItem', 0.0) for i in cuerpo))
 
         if tipo == '03':
             # IVA derivado del totalGravada para satisfacer la validación MH:
             # tributos[20].valor == totalGravada * 0.13
-            iva_ccf = round(total_grav * 0.13, 2)
-            total_pagar = round(total_grav + iva_ccf, 2)
-            tributos_ccf = [
-                {'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
-                 'valor': iva_ccf}] if total_grav > 0 else None
+            iva_ccf = _round2(total_grav * 0.13)
+            total_pagar = _round2(total_grav + iva_ccf)
+            tributos_ccf = (
+                [{'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%', 'valor': iva_ccf}]
+                if total_grav > 0 else None
+            )
 
         if tipo == '05':
-            iva_nc = round(total_grav * 0.13, 2)
-            total_nc = round(total_grav + iva_nc, 2)
-            tributos_nc = [
-                {'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%',
-                 'valor': iva_nc}] if total_grav > 0 else None
+            iva_nc = _round2(total_grav * 0.13)
 
         if tipo == '01':
             return {
@@ -308,14 +388,17 @@ class AccountMove(models.Model):
             'totalGravada':        total_grav,
             'subTotalVentas':      total_grav,
             'totalDescu':          0.0,
-            'tributos':            tributos_nc,
-            'montoTotalOperacion': total_nc,
+            'tributos': (
+                [{'codigo': '20', 'descripcion': 'Impuesto al Valor Agregado 13%', 'valor': iva_nc}]
+                if total_grav > 0 else None
+            ),
+            'montoTotalOperacion': _round2(total_grav + iva_nc),
             'ivaPerci':            0.0,
-            'totalIva':            iva_nc,
+            'totalIva':            0.0,
             'ivaRete':             0.0,
             'totalNoGravado':      0.0,
-            'totalPagar':          total_nc,
-            'totalLetras':         None,
+            'totalPagar':          _round2(total_grav + iva_nc),
+            'totalLetras':         self._numero_a_letras(_round2(total_grav + iva_nc)),
             'condicionOperacion':  1,
             'observaciones':       None,
             'codigoRetencionMH':   None,
@@ -337,6 +420,12 @@ class AccountMove(models.Model):
         self.ensure_one()
         tipo = self.tipo_dte or '01'
 
+        if tipo == '05' and not self.reversed_entry_id:
+            raise UserError(
+                'La Nota de Crédito debe estar vinculada a una factura original. '
+                'Use el botón "Agregar Nota de Crédito" desde la factura que desea reversar.'
+            )
+
         cuerpo = self._build_cuerpo(tipo)
         dte = {
             'identificacion':       self._build_identificacion(tipo),
@@ -346,13 +435,14 @@ class AccountMove(models.Model):
             'ventaTercero':         None,
             'cuerpoDocumento':      cuerpo,
             'resumen':              self._build_resumen(tipo, cuerpo),
-            'extension': {
+            'apendice':             None,
+        }
+        if tipo in ('01', '03'):
+            dte['extension'] = {
                 'nombEntrega': None, 'docuEntrega': None,
                 'nombRecibe':  None, 'docuRecibe':  None,
                 'observaciones': None, 'placaVehiculo': None,
-            } if tipo == '01' else None,
-            'apendice': None,
-        }
+            }
         if tipo in ('01', '03'):
             dte['otrosDocumentos'] = None
         return json.dumps(dte, ensure_ascii=False, indent=2)
@@ -395,6 +485,102 @@ class AccountMove(models.Model):
             raise UserError(msg)
 
         _logger.info('DTE: schema tipo %s validado correctamente', tipo)
+
+    # ── Validación de plazo de invalidación ───────────────────────────────────
+
+    def _validar_plazo_invalidacion(self):  # pylint: disable=too-many-return-statements,too-many-branches
+        """
+        Valida si el DTE puede ser invalidado según los plazos del MH.
+        Retorna (puede_invalidar: bool, mensaje: str, es_fuera_plazo: bool).
+        """
+        self.ensure_one()
+
+        if not self.dte_sello_recepcion:
+            return False, 'El DTE no tiene sello de recepción del MH.', False
+
+        if self.estado_dte == 'invalidado':
+            return False, 'Este DTE ya fue invalidado.', False
+
+        if self.estado_dte == 'fuera_de_plazo':
+            return False, (
+                'Este DTE está marcado como Fuera de Plazo. '
+                'Para los CCF debe emitir una Nota de Crédito Electrónica (DTE 05).'
+            ), True
+
+        if self.estado_dte not in ('aceptado', 'error_invalidacion'):
+            return False, (
+                f'Solo se pueden invalidar DTEs aceptados por el MH '
+                f'(estado actual: {dict(self._fields["estado_dte"].selection).get(self.estado_dte, self.estado_dte)}).'
+            ), False
+
+        hoy = fields.Date.today()
+
+        if self.tipo_dte == '01':
+            if not self.invoice_date:
+                return False, 'El DTE no tiene fecha de emisión.', False
+            if _HAS_RELATIVEDELTA:
+                fecha_limite = self.invoice_date + relativedelta(months=3)
+            else:
+                fecha_limite = self.invoice_date + timedelta(days=90)
+            if hoy > fecha_limite:
+                return False, (
+                    f'El plazo de invalidación para Facturas CF venció el {fecha_limite}. '
+                    'No es posible invalidar este DTE.'
+                ), False
+            return True, '', False
+
+        if self.tipo_dte == '03':
+            if not self.dte_fecha_procesamiento:
+                return False, 'El DTE no tiene fecha de procesamiento del MH.', False
+            try:
+                from datetime import datetime as dt
+                raw = self.dte_fecha_procesamiento.strip()
+                for fmt in ('%d/%m/%Y %H:%M:%S', '%d/%m/%Y', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'):
+                    try:
+                        fecha_proc = dt.strptime(raw, fmt).date()
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    raise ValueError(raw)
+            except Exception:
+                return False, 'No se pudo interpretar la fecha de procesamiento del MH.', False
+
+            fecha_limite = fecha_proc + timedelta(days=1)
+            if hoy > fecha_limite:
+                return False, (
+                    f'El Comprobante de Crédito Fiscal fue recibido por el MH el {fecha_proc}. '
+                    f'El plazo de invalidación venció el {fecha_limite}.\n\n'
+                    'Este Comprobante de Crédito Fiscal ya está fuera del plazo de invalidación. '
+                    'Debe emitir una Nota de Crédito Electrónica (DTE 05).'
+                ), True
+            return True, '', False
+
+        return False, f'El tipo DTE {self.tipo_dte} no soporta invalidación directa.', False
+
+    # ── Acción para abrir wizard de invalidación ──────────────────────────────
+
+    def action_abrir_wizard_invalidacion(self):
+        """Valida el plazo y abre el wizard de invalidación. Marca fuera_de_plazo si aplica."""
+        self.ensure_one()
+
+        puede, mensaje, es_fuera_plazo = self._validar_plazo_invalidacion()
+
+        if not puede:
+            if es_fuera_plazo and self.estado_dte not in ('fuera_de_plazo', 'invalidado'):
+                # Persistir el estado antes del error (patrón del proyecto)
+                self.estado_dte = 'fuera_de_plazo'
+                self.env.cr.commit()
+            raise UserError(mensaje)
+
+        return {
+            'type':      'ir.actions.act_window',
+            'name':      'Invalidar DTE',
+            'res_model': 'dte.invalidacion.wizard',
+            'view_mode': 'form',
+            'target':    'new',
+            'context':   {'default_move_id': self.id},
+        }
 
     # ── Métodos de envío al MH ─────────────────────────────────────────────────
 
@@ -475,8 +661,8 @@ class AccountMove(models.Model):
 
         return data['body']
 
-    def _enviar_dte_mh(self, token, documento_firmado):
-        """Envía el DTE firmado al MH y actualiza el estado según la respuesta."""
+    def _enviar_dte_mh(self, token, documento_firmado):  # pylint: disable=too-many-locals
+        """Envía el DTE firmado al MH, registra intento y actualiza estado."""
         self.ensure_one()
         company = self.company_id
         url = company.dte_url_recepcion or 'https://apitest.dtes.mh.gob.sv/fesv/recepciondte/'
@@ -488,51 +674,210 @@ class AccountMove(models.Model):
             'tipoDte':   self.tipo_dte,
             'documento': documento_firmado,
         }
+
+        # ── Contabilizar el intento ANTES de llamar al MH ─────────────────
+        nuevo_intento = (self.dte_intentos_envio or 0) + 1
+        self.write({
+            'dte_intentos_envio': nuevo_intento,
+            'dte_ultimo_envio':   fields.Datetime.now(),
+            'estado_dte':         'enviado',
+        })
+
         _logger.info(
-            'DTE ENVÍO → POST %s | tipoDte=%s | codigoGeneracion=%s',
-            url, self.tipo_dte, self.dte_codigo_generacion,
+            'DTE ENVÍO → POST %s | tipoDte=%s | codigoGeneracion=%s | intento=%s',
+            url, self.tipo_dte, self.dte_codigo_generacion, nuevo_intento,
         )
+
         try:
             resp = requests.post(url, json=payload, headers=headers, timeout=30)
         except requests.Timeout:
-            _logger.error('DTE ENVÍO ← timeout')
-            self.estado_dte = 'pendiente'
+            _logger.error('DTE ENVÍO ← timeout (intento %s)', nuevo_intento)
+            self.write({'estado_dte': 'pendiente'})
             raise UserError('El MH no respondió. El DTE quedó en estado Pendiente para reenvío.')
         except Exception as e:
-            _logger.error('DTE ENVÍO ← error inesperado: %s', e)
-            self.estado_dte = 'pendiente'
+            _logger.error('DTE ENVÍO ← error inesperado (intento %s): %s', nuevo_intento, e)
+            self.write({'estado_dte': 'pendiente'})
             raise UserError(f'Error al enviar el DTE al MH: {e}')
 
         _logger.info('DTE ENVÍO ← HTTP %s | body: %s', resp.status_code, resp.text)
+
         if not resp.ok:
-            self.estado_dte = 'pendiente'
+            self.write({'estado_dte': 'pendiente'})
             raise UserError(f'Error de recepción MH (HTTP {resp.status_code}):\n{resp.text}')
 
         data = resp.json()
-        estado = data.get('estado')
-        if estado == 'PROCESADO':
+
+        # ── Guardar respuesta raw del MH ──────────────────────────────────
+        self.dte_respuesta_mh = json.dumps(data, ensure_ascii=False, indent=2)
+
+        estado_mh = data.get('status', '')
+        sello = data.get('selloRecibido', '')
+        fh_proc = data.get('fhProcesamiento', '')
+        cod_msg = data.get('codigoMsg', '')
+        desc_msg = data.get('descripcionMsg', '')
+
+        # El MH puede responder "PROCESADO", "RECIBIDO" u otras variantes de
+        # éxito. Cualquier respuesta que traiga selloRecibido, o cuyo status
+        # no sea "RECHAZADO", se trata como aceptado.
+        es_rechazado = estado_mh == 'RECHAZADO'
+        es_aceptado = not es_rechazado and (
+            estado_mh in ('PROCESADO', 'RECIBIDO') or bool(sello)
+        )
+
+        if es_aceptado:
             self.write({
-                'dte_sello_recepcion':     data.get('selloRecibido', ''),
+                'dte_sello_recepcion':     sello,
                 'estado_dte':              'aceptado',
-                'dte_fecha_procesamiento': data.get('fhProcesamiento', ''),
+                'dte_fecha_procesamiento': fh_proc,
+                'dte_codigo_mensaje':      cod_msg,
+                'dte_descripcion_mensaje': desc_msg,
             })
-            _logger.info('DTE ENVÍO: %s PROCESADO | sello: %s', self.dte_codigo_generacion, data.get('selloRecibido'))
-        elif estado == 'RECHAZADO':
+            _logger.info(
+                'DTE ENVÍO: %s ACEPTADO (status=%s) | sello: %s | intentos: %s',
+                self.dte_codigo_generacion, estado_mh, sello, nuevo_intento,
+            )
+        elif es_rechazado:
             observaciones = data.get('observaciones', [])
             self.write({
                 'estado_dte':              'rechazado',
-                'dte_descripcion_mensaje': data.get('descripcionMsg', ''),
+                'dte_codigo_mensaje':      cod_msg,
+                'dte_descripcion_mensaje': desc_msg,
                 'dte_observaciones':       '\n'.join(observaciones) if observaciones else '',
             })
-            _logger.warning('DTE ENVÍO: %s RECHAZADO | msg: %s | obs: %s',
-                            self.dte_codigo_generacion, data.get('descripcionMsg'), observaciones)
+            _logger.warning(
+                'DTE ENVÍO: %s RECHAZADO | msg: %s | obs: %s | intentos: %s',
+                self.dte_codigo_generacion, desc_msg, observaciones, nuevo_intento,
+            )
         else:
-            _logger.warning('DTE ENVÍO: estado desconocido del MH: %s', data)
+            # Status desconocido sin sello — dejar en "pendiente" para reenvío
+            self.write({'estado_dte': 'pendiente'})
+            _logger.warning(
+                'DTE ENVÍO: %s — status desconocido del MH: %s | respuesta: %s',
+                self.dte_codigo_generacion, estado_mh, data,
+            )
 
         return data
 
+    def _enviar_pdf_cliente(self):  # pylint: disable=too-many-locals
+        """
+        Genera el PDF de la factura y lo envía por correo al cliente.
+        Registra el intento en dte.mail.log para trazabilidad completa.
+        Se llama automáticamente cuando el DTE queda en estado 'aceptado'.
+        """
+        self.ensure_one()
+        intento_num = len(self.dte_mail_log_ids) + 1
+        destinatario = (self.partner_id.email or '').strip()
+
+        if not destinatario:
+            _logger.warning(
+                'DTE MAIL: factura %s sin correo de cliente — no se envía PDF',
+                self.name,
+            )
+            self.env['dte.mail.log'].create({
+                'move_id':       self.id,
+                'destinatario':  '(sin correo)',
+                'asunto':        'N/A',
+                'exitoso':       False,
+                'error':         'El cliente no tiene correo electrónico registrado.',
+                'intento_numero': intento_num,
+            })
+            return
+
+        # ── 1. Generar el PDF ──────────────────────────────────────────────
+        try:
+            pdf_content, _ = self.env['ir.actions.report']._render_qweb_pdf(
+                'account.action_account_original_vendor_bill',  # report externo de Odoo
+                res_ids=self.ids,
+            )
+        except Exception:
+            # Fallback: reporte genérico de factura de ventas
+            try:
+                pdf_content, _ = self.env['ir.actions.report']._render_qweb_pdf(
+                    'account.action_report_original_vendor_bill',
+                    res_ids=self.ids,
+                )
+            except Exception:
+                pdf_content, _ = self.env['ir.actions.report']._render_qweb_pdf(
+                    'account.report_invoice',
+                    res_ids=self.ids,
+                )
+
+        # ── 2. Crear adjuntos (PDF + JSON DTE) ────────────────────────────
+        cod_gen = self.dte_codigo_generacion or self.name.replace('/', '_')
+        nombre_pdf = f'{cod_gen}.pdf'
+        nombre_json = f'{cod_gen}.json'
+
+        attachment_pdf = self.env['ir.attachment'].create({
+            'name': nombre_pdf,
+            'type': 'binary',
+            'datas': base64.b64encode(pdf_content),
+            'mimetype': 'application/pdf',
+            'res_model': 'account.move',
+            'res_id': self.id,
+        })
+
+        attachment_json = self.env['ir.attachment'].create({
+            'name': nombre_json,
+            'type': 'binary',
+            'datas': base64.b64encode((self.dte_json or '{}').encode('utf-8')),
+            'mimetype': 'application/json',
+            'res_model': 'account.move',
+            'res_id': self.id,
+        })
+
+        # ── 3. Construir y enviar el correo ────────────────────────────────
+        asunto = f'Factura Electrónica {self.name} — {self.company_id.name}'
+        cuerpo = f"""
+            <p>Estimado/a <strong>{self.partner_id.name}</strong>,</p>
+            <p>Adjunto encontrará su factura electrónica
+               <strong>{self.name}</strong>
+               emitida por <strong>{self.company_id.name}</strong>,
+               con sello de recepción del Ministerio de Hacienda:
+               <code>{self.dte_sello_recepcion}</code>.</p>
+            <p>Gracias por su preferencia.</p>
+        """
+
+        mail_values = {
+            'subject': asunto,
+            'body_html': cuerpo,
+            'email_to': destinatario,
+            'email_from': self.company_id.email or '',
+            'author_id': self.env.user.partner_id.id,
+            'attachment_ids': [(4, attachment_pdf.id), (4, attachment_json.id)],
+            'auto_delete': True,
+        }
+
+        error_msg = None
+        exitoso = False
+        try:
+            mail = self.env['mail.mail'].sudo().create(mail_values)
+            mail.sudo().send()
+            exitoso = True
+            _logger.info(
+                'DTE MAIL: PDF de %s enviado a %s (intento %s)',
+                self.name, destinatario, intento_num,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            _logger.error(
+                'DTE MAIL: fallo al enviar PDF de %s a %s: %s',
+                self.name, destinatario, e,
+            )
+
+        # ── 4. Registrar el intento en el log ─────────────────────────────
+        self.env['dte.mail.log'].create({
+            'move_id':        self.id,
+            'destinatario':   destinatario,
+            'asunto':         asunto,
+            'cuerpo':         cuerpo,
+            'adjunto_nombre': f'{nombre_pdf}, {nombre_json}',
+            'exitoso':        exitoso,
+            'error':          error_msg,
+            'intento_numero': intento_num,
+        })
+
     def action_enviar_dte(self):
-        """Ejecuta los 3 pasos del envío DTE: autenticación, firma y recepción."""
+        """Ejecuta los 3 pasos del envío DTE y envía el PDF al cliente si es aceptado."""
         self.ensure_one()
         company = self.company_id
 
@@ -571,7 +916,100 @@ class AccountMove(models.Model):
             self.env.cr.commit()
             raise
 
+        # ── Enviar PDF automáticamente si fue aceptado ────────────────────
+        if self.estado_dte == 'aceptado':
+            try:
+                self._enviar_pdf_cliente()
+            except Exception as e:
+                # El envío de correo no debe revertir el DTE ya aceptado
+                _logger.error('DTE MAIL: error no crítico al enviar PDF: %s', e)
+
         self.env.cr.commit()
+
+    # ── Regenerar JSON DTE ────────────────────────────────────────────────────
+
+    def action_corregir_estado_dte(self):
+        """Re-procesa la respuesta MH guardada para corregir DTEs que quedaron en estado 'enviado'."""
+        self.ensure_one()
+        if self.estado_dte != 'enviado':
+            raise UserError('Este botón solo aplica cuando el DTE está en estado Enviado.')
+
+        if not self.dte_respuesta_mh:
+            raise UserError(
+                'No hay respuesta del MH guardada. Reenvíe el DTE para obtener una nueva respuesta.'
+            )
+
+        try:
+            data = json.loads(self.dte_respuesta_mh)
+        except Exception:
+            raise UserError('La respuesta del MH guardada no es JSON válido.')
+
+        estado_mh = data.get('status', '')
+        sello = data.get('selloRecibido', '')
+        fh_proc = data.get('fhProcesamiento', '')
+        cod_msg = data.get('codigoMsg', '')
+        desc_msg = data.get('descripcionMsg', '')
+
+        es_rechazado = estado_mh == 'RECHAZADO'
+        es_aceptado = not es_rechazado and (
+            estado_mh in ('PROCESADO', 'RECIBIDO') or bool(sello)
+        )
+
+        if es_aceptado:
+            self.write({
+                'dte_sello_recepcion':     sello,
+                'estado_dte':              'aceptado',
+                'dte_fecha_procesamiento': fh_proc,
+                'dte_codigo_mensaje':      cod_msg,
+                'dte_descripcion_mensaje': desc_msg,
+            })
+            _logger.info('DTE CORRECCIÓN: %s → aceptado | sello: %s', self.dte_codigo_generacion, sello)
+        elif es_rechazado:
+            obs = data.get('observaciones', [])
+            self.write({
+                'estado_dte':              'rechazado',
+                'dte_codigo_mensaje':      cod_msg,
+                'dte_descripcion_mensaje': desc_msg,
+                'dte_observaciones':       '\n'.join(obs) if obs else '',
+            })
+            _logger.warning('DTE CORRECCIÓN: %s → rechazado | msg: %s', self.dte_codigo_generacion, desc_msg)
+        else:
+            raise UserError(
+                f'No se puede determinar el estado final del MH desde la respuesta guardada.\n'
+                f'status: {estado_mh!r}\nselloRecibido: {sello!r}\n\n'
+                'Reenvíe el DTE para obtener una respuesta actualizada.'
+            )
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Estado corregido',
+                'message': f'DTE actualizado a: {dict(self._fields["estado_dte"].selection).get(self.estado_dte)}',
+                'type': 'success',
+                'sticky': False,
+            },
+        }
+
+    def action_regenerar_dte_json(self):
+        self.ensure_one()
+        if self.estado_dte not in ('pendiente', 'rechazado'):
+            raise UserError('Solo se puede regenerar el JSON cuando el DTE está en estado Pendiente o Rechazado.')
+
+        nuevo_json = self._serializar_dte()
+        self.write({'dte_json': nuevo_json})
+        _logger.info('DTE: JSON regenerado para %s (%s)', self.dte_codigo_generacion, self.tipo_dte)
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Éxito',
+                'message': 'JSON DTE regenerado correctamente',
+                'type': 'success',
+                'sticky': False,
+            },
+        }
 
     # ── Override action_post ───────────────────────────────────────────────────
 
@@ -590,3 +1028,23 @@ class AccountMove(models.Model):
             move.estado_dte = 'pendiente'
 
         return res
+
+    def action_descargar_json_dte(self):
+        """Genera un adjunto con el JSON DTE y lo descarga."""
+        self.ensure_one()
+        if not self.dte_json:
+            raise UserError('Esta factura no tiene JSON DTE generado.')
+        nombre = 'DTE_' + (self.dte_numero_control or self.name) + '.json'
+        adjunto = self.env['ir.attachment'].create({
+            'name': nombre,
+            'type': 'binary',
+            'datas': base64.b64encode(self.dte_json.encode('utf-8')),
+            'mimetype': 'application/json',
+            'res_model': self._name,
+            'res_id': self.id,
+        })
+        return {
+            'type': 'ir.actions.act_url',
+            'url': '/web/content/' + str(adjunto.id) + '?download=true',
+            'target': 'self',
+        }

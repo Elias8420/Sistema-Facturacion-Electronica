@@ -16,6 +16,7 @@
                             <field name="dte_nrc"              placeholder="Ej: 123456-7"/>
                             <field name="dte_nombre_comercial" placeholder="Deja vacío para usar el nombre legal"/>
                             <field name="dte_tipo_establecimiento" placeholder="Ej: 01"/>
+                            <field name="dte_nom_establecimiento" placeholder="Ej: Casa Matriz"/>
                         </group>
                         <group>
                             <field name="dte_cod_actividad"  placeholder="Ej: 47111"/>
@@ -44,6 +45,7 @@
                         <group>
                             <field name="dte_url_auth"      placeholder="https://apitest.dtes.mh.gob.sv/seguridad/auth"/>
                             <field name="dte_url_recepcion" placeholder="https://apitest.dtes.mh.gob.sv/fesv/recepciondte/"/>
+                            <field name="dte_url_anulacion" placeholder="https://apitest.dtes.mh.gob.sv/fesv/anulardte/"/>
                             <field name="dte_url_firmador"  placeholder="http://localhost:8113"/>
                         </group>
                     </group>

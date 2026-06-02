@@ -6,29 +6,45 @@
         <field name="inherit_id" ref="account.view_move_form"/>
         <field name="arch" type="xml">
 
-            <!-- Botón "Enviar al MH" en el header de la factura -->
+            <!-- Botones en el header -->
             <xpath expr="//header" position="inside">
                 <button name="action_enviar_dte"
                         string="Enviar al MH"
                         type="object"
                         class="btn-primary"
                         invisible="state != 'posted' or estado_dte not in ('pendiente', 'rechazado')"/>
+                <button name="action_abrir_wizard_invalidacion"
+                        string="Invalidar DTE"
+                        type="object"
+                        class="btn-danger"
+                        invisible="state != 'posted' or estado_dte not in ('aceptado', 'error_invalidacion')"/>
+                <button name="action_corregir_estado_dte"
+                        string="Corregir Estado"
+                        type="object"
+                        class="btn-warning"
+                        invisible="estado_dte != 'enviado'"/>
+                <button name="action_descargar_json_dte"
+                        string="Descargar JSON DTE"
+                        type="object"
+                        class="btn-secondary"/>
             </xpath>
 
-            <!-- Tab DTE -->
             <notebook position="inside">
+
+                <!-- ══ Pestaña principal DTE ══ -->
                 <page string="Facturación Electrónica DTE" name="dte_sv">
 
-                    <!-- Fila 1: Tipo y Estado -->
+                    <!-- Clasificación e Identificación -->
                     <group>
                         <group string="Clasificación">
                             <field name="tipo_dte"/>
                             <field name="estado_dte"
                                    widget="badge"
-                                   decoration-secondary="estado_dte == 'borrador'"
-                                   decoration-warning="estado_dte == 'pendiente'"
+                                   decoration-secondary="estado_dte in ('borrador', 'fuera_de_plazo')"
+                                   decoration-warning="estado_dte in ('pendiente', 'enviado')"
                                    decoration-success="estado_dte == 'aceptado'"
-                                   decoration-danger="estado_dte == 'rechazado'"
+                                   decoration-danger="estado_dte in ('rechazado', 'error_invalidacion')"
+                                   decoration-info="estado_dte == 'invalidado'"
                                    readonly="1"/>
                         </group>
                         <group string="Identificación">
@@ -37,25 +53,34 @@
                         </group>
                     </group>
 
-                    <!-- Fila 2: Respuesta del MH -->
+                    <!-- Respuesta MH + datos de envío -->
                     <group string="Respuesta Ministerio de Hacienda">
                         <group>
                             <field name="dte_sello_recepcion"     readonly="1"/>
                             <field name="dte_fecha_procesamiento" readonly="1"/>
-                        </group>
-                        <group>
                             <field name="dte_codigo_mensaje"      readonly="1"/>
                             <field name="dte_descripcion_mensaje" readonly="1"/>
                         </group>
+                        <group string="Datos de Envío">
+                            <field name="dte_intentos_envio" readonly="1"/>
+                            <field name="dte_ultimo_envio"    readonly="1"/>
+                        </group>
                     </group>
 
-                    <!-- Observaciones del MH (ancho completo) -->
+                    <!-- Observaciones (solo si hay contenido) -->
                     <group string="Observaciones MH"
                            invisible="not dte_observaciones">
-                        <field name="dte_observaciones"
-                               readonly="1"
-                               nolabel="1"/>
+                        <field name="dte_observaciones" readonly="1" nolabel="1"/>
                     </group>
+
+                    <!-- Acciones sobre el JSON -->
+                    <div invisible="estado_dte not in ('pendiente', 'rechazado')"
+                         style="margin-bottom:8px;">
+                        <button name="action_regenerar_dte_json"
+                                string="Regenerar JSON DTE"
+                                type="object"
+                                class="btn btn-secondary"/>
+                    </div>
 
                     <!-- JSON completo del DTE -->
                     <group string="JSON DTE">
@@ -66,6 +91,51 @@
                     </group>
 
                 </page>
+
+                <!-- ══ Pestaña historial de correos ══ -->
+                <page string="Historial de Correos DTE" name="dte_mail_log">
+                    <field name="dte_mail_log_ids"
+                           readonly="1"
+                           context="{'default_move_id': active_id}">
+                        <tree decoration-success="exitoso == True"
+                              decoration-danger="exitoso == False">
+                            <field name="intento_numero" string="Intento"/>
+                            <field name="fecha_envio"/>
+                            <field name="destinatario"/>
+                            <field name="asunto"/>
+                            <field name="adjunto_nombre"/>
+                            <field name="exitoso" widget="boolean_toggle"/>
+                            <field name="error" optional="show"/>
+                        </tree>
+                    </field>
+                </page>
+
+                <!-- ══ Pestaña de invalidaciones ══ -->
+                <page string="Invalidaciones DTE" name="dte_invalidaciones"
+                      invisible="not invalidacion_ids">
+                    <field name="invalidacion_ids" readonly="1">
+                        <tree decoration-success="estado == 'procesado'"
+                              decoration-danger="estado in ('rechazado', 'error')"
+                              decoration-warning="estado in ('pendiente', 'enviado')">
+                            <field name="codigo_generacion" string="Código del Evento"/>
+                            <field name="tipo_anulacion"/>
+                            <field name="estado" widget="badge"/>
+                            <field name="sello_recibido"/>
+                            <field name="fecha_invalidacion"/>
+                            <field name="descripcion_mensaje" optional="show"/>
+                        </tree>
+                    </field>
+
+                    <!-- Mensaje para CCF fuera de plazo -->
+                    <div class="alert alert-warning mt-2" role="alert"
+                         invisible="estado_dte != 'fuera_de_plazo'">
+                        <strong>Fuera de Plazo:</strong>
+                        Este Comprobante de Crédito Fiscal ya está fuera del plazo de invalidación.
+                        Para anular este documento debe emitir una
+                        <strong>Nota de Crédito Electrónica (DTE 05)</strong>.
+                    </div>
+                </page>
+
             </notebook>
 
         </field>
