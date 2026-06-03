@@ -31,9 +31,7 @@
                 <group string="Motivo de Invalidación">
                     <field name="tipo_anulacion" required="1"/>
                     <field name="motivo_anulacion"
-                           required="tipo_anulacion == '3'"
-                           invisible="tipo_anulacion != '3'"
-                           placeholder="Describa el motivo de la invalidación..."/>
+                           placeholder="Describa el motivo de la invalidación (opcional)..."/>
                 </group>
 
                 <!-- Datos del responsable -->

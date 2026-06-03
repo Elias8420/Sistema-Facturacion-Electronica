@@ -29,7 +29,16 @@
                         </td>
                         <td width="50%" style="padding:6px 10px; border:1px solid #DDEBF7; border-left:none; background:#F5F9FF;">
                             <div style="color:#555; margin-bottom:2px;"><strong>Estado DTE</strong></div>
-                            <div><t t-esc="o.estado_dte or 'N/A'"/></div>
+                            <div>
+                                <t t-if="o.estado_dte == 'aceptado'">Aceptado</t>
+                                <t t-elif="o.estado_dte == 'invalidado'">Invalidado</t>
+                                <t t-elif="o.estado_dte == 'rechazado'">Rechazado</t>
+                                <t t-elif="o.estado_dte == 'pendiente'">Pendiente de Envío</t>
+                                <t t-elif="o.estado_dte == 'enviado'">Enviado</t>
+                                <t t-elif="o.estado_dte == 'fuera_de_plazo'">Fuera de Plazo</t>
+                                <t t-elif="o.estado_dte == 'error_invalidacion'">Error en Invalidación</t>
+                                <t t-else=""><t t-esc="o.estado_dte or 'N/A'"/></t>
+                            </div>
                         </td>
                     </tr>
                     <tr>
@@ -49,8 +58,8 @@
                         </td>
                     </tr>
 
-                    <!-- Sello de recepción — solo si fue aceptado por el MH -->
-                    <t t-if="o.estado_dte == 'aceptado' and o.dte_sello_recepcion">
+                    <!-- Sello de recepción — visible cuando fue aceptado o invalidado -->
+                    <t t-if="o.dte_sello_recepcion and o.estado_dte in ('aceptado', 'invalidado')">
                         <tr>
                             <td colspan="2" style="padding:6px 10px; border:1px solid #C6EFCE; border-top:none; background:#F0FFF4;">
                                 <div style="color:#276221; margin-bottom:2px;">
@@ -68,6 +77,20 @@
                                 </div>
                                 <div style="color:#276221;">
                                     <t t-esc="o.dte_fecha_procesamiento or 'N/A'"/>
+                                </div>
+                            </td>
+                        </tr>
+                    </t>
+
+                    <!-- Aviso de anulación — solo cuando el DTE fue invalidado -->
+                    <t t-if="o.estado_dte == 'invalidado'">
+                        <tr>
+                            <td colspan="2" style="padding:6px 10px; border:1px solid #F5C6CB; border-top:none; background:#FFF5F5;">
+                                <div style="color:#721C24; margin-bottom:2px;">
+                                    <strong>✗ DTE ANULADO ANTE EL MINISTERIO DE HACIENDA</strong>
+                                </div>
+                                <div style="font-size:8px; color:#721C24;">
+                                    Este documento tributario electrónico fue invalidado y no tiene validez fiscal.
                                 </div>
                             </td>
                         </tr>
