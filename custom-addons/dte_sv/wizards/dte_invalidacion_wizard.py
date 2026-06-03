@@ -1,3 +1,5 @@
+import re
+
 from odoo import models, fields, api
 from odoo.exceptions import UserError
 
@@ -114,11 +116,38 @@ class DteInvalidacionWizard(models.TransientModel):
         help='UUID del DTE que reemplaza al invalidado. Dejar vacío si no aplica.',
     )
 
-    # ── Validación en tiempo real ──────────────────────────────────────────────
+    # ── Validaciones ──────────────────────────────────────────────────────────
+
+    def _validar_num_doc(self, tipo, numero, persona):
+        """Valida longitud de dígitos según tipo de documento."""
+        if not tipo or not numero:
+            return
+        solo_digitos = re.sub(r'\D', '', numero)
+        if tipo == '13':  # DUI — máximo 9 dígitos
+            if len(solo_digitos) > 9:
+                raise UserError(
+                    f'El número de documento del {persona} (DUI) no puede superar 9 dígitos '
+                    f'(se ingresaron {len(solo_digitos)}).'
+                )
+        elif tipo == '36':  # NIT — exactamente 9 o 14 dígitos
+            if len(solo_digitos) not in (9, 14):
+                raise UserError(
+                    f'El número de documento del {persona} (NIT) debe tener 9 o 14 dígitos '
+                    f'(se ingresaron {len(solo_digitos)}).'
+                )
+
+    @api.constrains('tip_doc_responsable', 'num_doc_responsable')
+    def _check_num_doc_responsable(self):
+        for rec in self:
+            rec._validar_num_doc(rec.tip_doc_responsable, rec.num_doc_responsable, 'Responsable')
+
+    @api.constrains('tip_doc_solicita', 'num_doc_solicita')
+    def _check_num_doc_solicita(self):
+        for rec in self:
+            rec._validar_num_doc(rec.tip_doc_solicita, rec.num_doc_solicita, 'Solicitante')
 
     @api.constrains('codigo_generacion_r')
     def _check_codigo_generacion_r(self):
-        import re
         patron = r'^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$'
         for rec in self:
             if rec.codigo_generacion_r and not re.match(patron, rec.codigo_generacion_r.upper()):

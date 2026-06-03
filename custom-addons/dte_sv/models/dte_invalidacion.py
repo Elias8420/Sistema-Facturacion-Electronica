@@ -384,6 +384,55 @@ class DteInvalidacion(models.Model):
 
     # ── Notificación al cliente tras invalidación ─────────────────────────────
 
+    def _crear_adjuntos_invalidacion(self, move, cod_gen):
+        """Genera el PDF y crea los 3 adjuntos; retorna (attachment_ids, nombres_str)."""
+        # Limpiar caché del ORM para que el reporte lea estado_dte='invalidado' desde la BD
+        move.invalidate_recordset()
+
+        try:
+            pdf_content, _ = move.env['ir.actions.report']._render_qweb_pdf(
+                'account.action_account_original_vendor_bill',
+                res_ids=move.ids,
+            )
+        except Exception:
+            try:
+                pdf_content, _ = move.env['ir.actions.report']._render_qweb_pdf(
+                    'account.action_report_original_vendor_bill',
+                    res_ids=move.ids,
+                )
+            except Exception:
+                pdf_content, _ = move.env['ir.actions.report']._render_qweb_pdf(
+                    'account.report_invoice',
+                    res_ids=move.ids,
+                )
+
+        nombre_pdf = f'{cod_gen}.pdf'
+        nombre_json_dte = f'{cod_gen}.json'
+        nombre_json_inv = f'ANULACION_{cod_gen}.json'
+
+        att_pdf = move.env['ir.attachment'].create({
+            'name': nombre_pdf, 'type': 'binary',
+            'datas': base64.b64encode(pdf_content).decode('utf-8'),
+            'mimetype': 'application/pdf',
+            'res_model': 'account.move', 'res_id': move.id,
+        })
+        att_dte = move.env['ir.attachment'].create({
+            'name': nombre_json_dte, 'type': 'binary',
+            'datas': base64.b64encode((move.dte_json or '{}').encode('utf-8')).decode('utf-8'),
+            'mimetype': 'application/json',
+            'res_model': 'account.move', 'res_id': move.id,
+        })
+        att_inv = move.env['ir.attachment'].create({
+            'name': nombre_json_inv, 'type': 'binary',
+            'datas': base64.b64encode((self.json_evento or '{}').encode('utf-8')).decode('utf-8'),
+            'mimetype': 'application/json',
+            'res_model': 'dte.invalidacion', 'res_id': self.id,
+        })
+
+        attachment_ids = [(4, att_pdf.id), (4, att_dte.id), (4, att_inv.id)]
+        nombres_str = f'{nombre_pdf}, {nombre_json_dte}, {nombre_json_inv}'
+        return attachment_ids, nombres_str
+
     def _enviar_notificacion_invalidacion(self):
         """
         Envía al cliente un correo notificando la anulación del DTE.
@@ -411,58 +460,11 @@ class DteInvalidacion(models.Model):
             })
             return
 
-        # ── 1. Generar el PDF ──────────────────────────────────────────────
-        try:
-            pdf_content, _ = move.env['ir.actions.report']._render_qweb_pdf(
-                'account.action_account_original_vendor_bill',
-                res_ids=move.ids,
-            )
-        except Exception:
-            try:
-                pdf_content, _ = move.env['ir.actions.report']._render_qweb_pdf(
-                    'account.action_report_original_vendor_bill',
-                    res_ids=move.ids,
-                )
-            except Exception:
-                pdf_content, _ = move.env['ir.actions.report']._render_qweb_pdf(
-                    'account.report_invoice',
-                    res_ids=move.ids,
-                )
-
-        # ── 2. Crear adjuntos ──────────────────────────────────────────────
+        # ── 1. Crear adjuntos (PDF + JSONs) ───────────────────────────────
         cod_gen = move.dte_codigo_generacion or move.name.replace('/', '_')
-        nombre_pdf = f'{cod_gen}.pdf'
-        nombre_json_dte = f'{cod_gen}.json'
-        nombre_json_inv = f'ANULACION_{cod_gen}.json'
+        attachment_ids, adjunto_nombres = self._crear_adjuntos_invalidacion(move, cod_gen)
 
-        attachment_pdf = move.env['ir.attachment'].create({
-            'name':      nombre_pdf,
-            'type':      'binary',
-            'datas':     base64.b64encode(pdf_content).decode('utf-8'),
-            'mimetype':  'application/pdf',
-            'res_model': 'account.move',
-            'res_id':    move.id,
-        })
-
-        attachment_json_dte = move.env['ir.attachment'].create({
-            'name':      nombre_json_dte,
-            'type':      'binary',
-            'datas':     base64.b64encode((move.dte_json or '{}').encode('utf-8')).decode('utf-8'),
-            'mimetype':  'application/json',
-            'res_model': 'account.move',
-            'res_id':    move.id,
-        })
-
-        attachment_json_inv = move.env['ir.attachment'].create({
-            'name':      nombre_json_inv,
-            'type':      'binary',
-            'datas':     base64.b64encode((self.json_evento or '{}').encode('utf-8')).decode('utf-8'),
-            'mimetype':  'application/json',
-            'res_model': 'dte.invalidacion',
-            'res_id':    self.id,
-        })
-
-        # ── 3. Construir y enviar el correo ────────────────────────────────
+        # ── 2. Construir y enviar el correo ────────────────────────────────
         asunto = f'Anulación de Factura Electrónica {move.name} — {move.company_id.name}'
         cuerpo = f"""
             <p>Estimado/a <strong>{partner.name}</strong>,</p>
@@ -482,12 +484,8 @@ class DteInvalidacion(models.Model):
             'email_to':       destinatario,
             'email_from':     move.company_id.email or '',
             'author_id':      move.env.user.partner_id.id,
-            'attachment_ids': [
-                (4, attachment_pdf.id),
-                (4, attachment_json_dte.id),
-                (4, attachment_json_inv.id),
-            ],
-            'auto_delete': True,
+            'attachment_ids': attachment_ids,
+            'auto_delete':    True,
         }
 
         error_msg = None
@@ -507,13 +505,13 @@ class DteInvalidacion(models.Model):
                 move.name, destinatario, e,
             )
 
-        # ── 4. Registrar el intento en el log ─────────────────────────────
+        # ── 3. Registrar el intento en el log ─────────────────────────────
         move.env['dte.mail.log'].create({
             'move_id':        move.id,
             'destinatario':   destinatario,
             'asunto':         asunto,
             'cuerpo':         cuerpo,
-            'adjunto_nombre': f'{nombre_pdf}, {nombre_json_dte}, {nombre_json_inv}',
+            'adjunto_nombre': adjunto_nombres,
             'exitoso':        exitoso,
             'error':          error_msg,
             'intento_numero': intento_num,
