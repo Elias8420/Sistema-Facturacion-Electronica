@@ -1,7 +1,6 @@
-# Sistema de Facturación Electrónica — Farmacia DTE SV
+﻿# Sistema de Facturación Electrónica — Farmacia DTE SV
 
-Odoo 17 Community dockerizado con módulo personalizado `dte_sv` para facturación
-electrónica salvadoreña.
+Odoo 17 Community dockerizado con módulo personalizado `dte_sv` para facturación electrónica salvadoreña.
 
 ---
 
@@ -12,9 +11,15 @@ electrónica salvadoreña.
 ├── docker-compose.yml        # Orquestación de contenedores
 ├── .env                      # Variables de entorno (no subir a git)
 ├── config/
-│   └── odoo.conf             # Configuración de Odoo
+│   ├── init.sh               # Inicialización y configuración de Odoo
+│   └── odoo.conf.tpl         # Plantilla de configuración
 ├── custom-addons/
-│   └── dte_sv/               # Módulo de facturación electrónica (aquí va el código)
+│   └── dte_sv/               # Módulo de facturación electrónica
+│       ├── models/
+│       ├── views/
+│       ├── security/
+│       ├── data/
+│       └── static/
 └── README.md
 ```
 
@@ -33,6 +38,9 @@ POSTGRES_PASSWORD=tu_password_segura
 ODOO_ADMIN_PASSWD=tu_master_password
 ```
 
+> Si todavía no tienes un archivo `.env`, copia `.env.example` como punto de partida.
+
+---
 
 ## Comandos principales
 
@@ -44,7 +52,7 @@ docker compose up -d
 
 Odoo quedará disponible en `http://<IP>:8069`
 
-## Ejecutar migracion inicial 
+## Ejecutar migracion inicial
 
 ```bash
 docker compose exec odoo odoo -i base -d farmacia_db --stop-after-init
@@ -138,11 +146,3 @@ docker compose exec odoo odoo -u dte_sv -d nombre_bd --stop-after-init
 |------------------|------------------------------------|
 | `postgres_data`  | Datos de PostgreSQL                |
 | `odoo_filestore` | Archivos subidos a Odoo (PDFs, etc.)|
-
----
-
-## Notas
-
-- El servicio `odoo` no arranca hasta que `db` pase su healthcheck (`pg_isready`).
-- `restart: always` garantiza que ambos servicios se reinicien tras un reboot del VPS.
-- Sin Nginx ni SSL en esta etapa; acceso directo por puerto `8069`.
