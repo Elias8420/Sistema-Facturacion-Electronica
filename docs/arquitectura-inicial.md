@@ -145,6 +145,8 @@ Sistema **Odoo 17 dockerizado** especializado en facturación electrónica para 
 └──────────────────────────────────────────┘
 ```
 
+**Diagrama de secuencia completo**: ![Ver Diagrama de Secuencia](./diagramas/diagrama-secuencia-dte.png)
+
 ## Integraciones Externas
 
 ### Ministerio de Hacienda (MH)
