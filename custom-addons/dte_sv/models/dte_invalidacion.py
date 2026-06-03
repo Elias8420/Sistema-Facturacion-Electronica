@@ -1,3 +1,4 @@
+import base64
 import uuid
 import json
 import logging
@@ -381,6 +382,143 @@ class DteInvalidacion(models.Model):
 
         return data
 
+    # ── Notificación al cliente tras invalidación ─────────────────────────────
+
+    def _enviar_notificacion_invalidacion(self):
+        """
+        Envía al cliente un correo notificando la anulación del DTE.
+        Adjunta: PDF de la factura, JSON del DTE original, JSON del evento de invalidación.
+        Registra el intento en dte.mail.log para trazabilidad.
+        """
+        self.ensure_one()
+        move = self.move_id
+        partner = move.partner_id
+        intento_num = len(move.dte_mail_log_ids) + 1
+        destinatario = (partner.email or '').strip()
+
+        if not destinatario:
+            _logger.warning(
+                'INVALIDACIÓN MAIL: factura %s sin correo de cliente — no se envía notificación',
+                move.name,
+            )
+            move.env['dte.mail.log'].create({
+                'move_id':        move.id,
+                'destinatario':   '(sin correo)',
+                'asunto':         'N/A',
+                'exitoso':        False,
+                'error':          'El cliente no tiene correo electrónico registrado.',
+                'intento_numero': intento_num,
+            })
+            return
+
+        # ── 1. Generar el PDF ──────────────────────────────────────────────
+        try:
+            pdf_content, _ = move.env['ir.actions.report']._render_qweb_pdf(
+                'account.action_account_original_vendor_bill',
+                res_ids=move.ids,
+            )
+        except Exception:
+            try:
+                pdf_content, _ = move.env['ir.actions.report']._render_qweb_pdf(
+                    'account.action_report_original_vendor_bill',
+                    res_ids=move.ids,
+                )
+            except Exception:
+                pdf_content, _ = move.env['ir.actions.report']._render_qweb_pdf(
+                    'account.report_invoice',
+                    res_ids=move.ids,
+                )
+
+        # ── 2. Crear adjuntos ──────────────────────────────────────────────
+        cod_gen = move.dte_codigo_generacion or move.name.replace('/', '_')
+        nombre_pdf = f'{cod_gen}.pdf'
+        nombre_json_dte = f'{cod_gen}.json'
+        nombre_json_inv = f'ANULACION_{cod_gen}.json'
+
+        attachment_pdf = move.env['ir.attachment'].create({
+            'name':      nombre_pdf,
+            'type':      'binary',
+            'datas':     base64.b64encode(pdf_content).decode('utf-8'),
+            'mimetype':  'application/pdf',
+            'res_model': 'account.move',
+            'res_id':    move.id,
+        })
+
+        attachment_json_dte = move.env['ir.attachment'].create({
+            'name':      nombre_json_dte,
+            'type':      'binary',
+            'datas':     base64.b64encode((move.dte_json or '{}').encode('utf-8')).decode('utf-8'),
+            'mimetype':  'application/json',
+            'res_model': 'account.move',
+            'res_id':    move.id,
+        })
+
+        attachment_json_inv = move.env['ir.attachment'].create({
+            'name':      nombre_json_inv,
+            'type':      'binary',
+            'datas':     base64.b64encode((self.json_evento or '{}').encode('utf-8')).decode('utf-8'),
+            'mimetype':  'application/json',
+            'res_model': 'dte.invalidacion',
+            'res_id':    self.id,
+        })
+
+        # ── 3. Construir y enviar el correo ────────────────────────────────
+        asunto = f'Anulación de Factura Electrónica {move.name} — {move.company_id.name}'
+        cuerpo = f"""
+            <p>Estimado/a <strong>{partner.name}</strong>,</p>
+            <p>Le informamos que la factura electrónica
+               <strong>{move.name}</strong>
+               emitida por <strong>{move.company_id.name}</strong>
+               ha sido <strong>anulada (invalidada)</strong> ante el Ministerio de Hacienda.</p>
+            <p>Sello de anulación: <code>{self.sello_recibido or 'N/A'}</code></p>
+            <p>Adjunto encontrará el PDF de la factura, el JSON del DTE original
+               y el JSON del evento de anulación.</p>
+            <p>Si tiene alguna consulta, no dude en contactarnos.</p>
+        """
+
+        mail_values = {
+            'subject':        asunto,
+            'body_html':      cuerpo,
+            'email_to':       destinatario,
+            'email_from':     move.company_id.email or '',
+            'author_id':      move.env.user.partner_id.id,
+            'attachment_ids': [
+                (4, attachment_pdf.id),
+                (4, attachment_json_dte.id),
+                (4, attachment_json_inv.id),
+            ],
+            'auto_delete': True,
+        }
+
+        error_msg = None
+        exitoso = False
+        try:
+            mail = move.env['mail.mail'].sudo().create(mail_values)
+            mail.sudo().send()
+            exitoso = True
+            _logger.info(
+                'INVALIDACIÓN MAIL: notificación de %s enviada a %s (intento %s)',
+                move.name, destinatario, intento_num,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            _logger.error(
+                'INVALIDACIÓN MAIL: fallo al enviar notificación de %s a %s: %s',
+                move.name, destinatario, e,
+            )
+
+        # ── 4. Registrar el intento en el log ─────────────────────────────
+        move.env['dte.mail.log'].create({
+            'move_id':        move.id,
+            'destinatario':   destinatario,
+            'asunto':         asunto,
+            'cuerpo':         cuerpo,
+            'adjunto_nombre': f'{nombre_pdf}, {nombre_json_dte}, {nombre_json_inv}',
+            'exitoso':        exitoso,
+            'error':          error_msg,
+            'intento_numero': intento_num,
+        })
+
     # ── Acción principal de invalidación ──────────────────────────────────────
 
     def action_invalidar_dte(self):
@@ -442,3 +580,13 @@ class DteInvalidacion(models.Model):
             raise
 
         self.env.cr.commit()
+
+        # Notificar al cliente si la invalidación fue aceptada por el MH
+        if move.estado_dte == 'invalidado':
+            try:
+                self._enviar_notificacion_invalidacion()
+            except Exception as e:
+                _logger.error(
+                    'INVALIDACIÓN MAIL: error no crítico al enviar notificación: %s', e,
+                )
+            self.env.cr.commit()
