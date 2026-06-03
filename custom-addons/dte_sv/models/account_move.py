@@ -810,16 +810,22 @@ class AccountMove(models.Model):
         attachment_pdf = self.env['ir.attachment'].create({
             'name': nombre_pdf,
             'type': 'binary',
-            'datas': base64.b64encode(pdf_content),
+            'datas': base64.b64encode(pdf_content).decode('utf-8'),
             'mimetype': 'application/pdf',
             'res_model': 'account.move',
             'res_id': self.id,
         })
 
+        dte_json_content = self.dte_json
+        if not dte_json_content:
+            _logger.warning(
+                'DTE MAIL: dte_json vacío para %s — no se adjuntará el JSON DTE',
+                self.name,
+            )
         attachment_json = self.env['ir.attachment'].create({
             'name': nombre_json,
             'type': 'binary',
-            'datas': base64.b64encode((self.dte_json or '{}').encode('utf-8')),
+            'datas': base64.b64encode((dte_json_content or '{}').encode('utf-8')).decode('utf-8'),
             'mimetype': 'application/json',
             'res_model': 'account.move',
             'res_id': self.id,
